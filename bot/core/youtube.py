@@ -109,9 +109,6 @@ class YouTube:
                     else:
                         link = url
                     try:
-                        # Use proxy for HTTP requests if configured (HTTP proxy needs direct passing, SOCKS needs connector)
-                        # If SOCKS, connector handles it. If HTTP, we can pass proxy arg or use connector too.
-                        # Simplest: If PROXY_URL is set and NOT socks (i.e. http), pass it.
                         kwargs = {}
                         if config.PROXY_URL and not config.PROXY_URL.startswith("socks"):
                             kwargs["proxy"] = config.PROXY_URL
