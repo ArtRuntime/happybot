@@ -104,7 +104,10 @@ class YouTube:
             async with session:
                 for i, url in enumerate(urls):
                     path = f"{self.cookie_dir}/cookie_{i}.txt"
-                    link = "https://batbin.me/api/v2/paste/" + url.split("/")[-1]
+                    if "batbin" in url:
+                        link = "https://batbin.me/api/v2/paste/" + url.split("/")[-1]
+                    else:
+                        link = url
                     try:
                         # Use proxy for HTTP requests if configured (HTTP proxy needs direct passing, SOCKS needs connector)
                         # If SOCKS, connector handles it. If HTTP, we can pass proxy arg or use connector too.
