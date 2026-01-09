@@ -1,6 +1,6 @@
-# Copyright (c) 2025 botmousX1025
+# Copyright (c) 2025 alex5402.t.me
 # Licensed under the MIT License.
-# This file is part of AnonXMusic
+# This file is part of happybot
 
 
 from ._admins import admin_check, can_manage_vc, is_admin, reload_admins
