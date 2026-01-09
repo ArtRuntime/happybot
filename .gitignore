@@ -1,0 +1,17 @@
+.env
+.cache
+
+.idea
+.DS_Store
+venv/
+cache/
+downloads/
+__pycache__/
+!bot/cookies/*
+log.txt
+!requirements.txt
+*.session
+google-chrome-extracted/
+google-chrome-extracted/*
+*.session-journal
+wireproxy
