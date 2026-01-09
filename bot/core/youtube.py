@@ -127,6 +127,9 @@ class YouTube:
     async def search(self, query: str, m_id: int, video: bool = False) -> Track | None:
         if "music.youtube.com" in query:
             query = query.replace("music.youtube.com", "www.youtube.com")
+
+        if hasattr(self, 'regex') and not self.regex.match(query) and query.startswith("http"):
+             return await self._generic_search(query, m_id, video)
             
         _search = VideosSearch(query, limit=1, with_live=False)
         
@@ -149,6 +152,40 @@ class YouTube:
                 video=video,
             )
         return None
+
+    async def _generic_search(self, url: str, m_id: int, video: bool = False) -> Track | None:
+        """Helper to extract info from generic URLs using yt-dlp"""
+        cookie = self.get_cookies()
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "nocheckcertificate": True,
+        }
+        if cookie:
+            ydl_opts["cookiefile"] = cookie
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = await asyncio.to_thread(ydl.extract_info, url, download=False)
+                
+            if not info:
+                return None
+
+            return Track(
+                id=url, 
+                channel_name=info.get("uploader", "Unknown"),
+                duration=str(info.get("duration", 0)), 
+                duration_sec=info.get("duration", 0),
+                message_id=m_id,
+                title=info.get("title", "Unknown")[:25],
+                thumbnail=info.get("thumbnail"),
+                url=url,
+                view_count=str(info.get("view_count", "")),
+                video=video,
+            )
+        except Exception as e:
+            logger.error(f"Generic search failed: {e}")
+            return None
 
     async def playlist(self, limit: int, user: str, url: str, video: bool) -> list[Track | None]:
         tracks = []
@@ -177,16 +214,21 @@ class YouTube:
         return tracks
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
-        url = self.base + video_id
-        ext = "mp4"
-        filename = f"downloads/{video_id}.{ext}"
+        if video_id.startswith("http"):
+            url = video_id
+            safe_id = video_id.split("/")[-1].split("?")[0]
+            if len(safe_id) > 20: safe_id = safe_id[:20]
+            filename = f"downloads/{safe_id}.mp4"
+        else:
+            url = self.base + video_id
+            filename = f"downloads/{video_id}.mp4"
 
         if Path(filename).exists():
             return filename
 
         cookie = self.get_cookies()
         base_opts = {
-            "outtmpl": "downloads/%(id)s.%(ext)s",
+            "outtmpl": filename,
             "quiet": True,
             "noplaylist": True,
             "geo_bypass": True,

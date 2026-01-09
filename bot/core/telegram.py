@@ -43,10 +43,6 @@ class Telegram:
             await sent.edit_text(sent.lang["play_duration_limit"].format(config.DURATION_LIMIT // 60))
             return await sent.stop_propagation()
 
-        if file_size > 200 * 1024 * 1024:
-            await sent.edit_text(sent.lang["dl_limit"])
-            return await sent.stop_propagation()
-
         async def progress(current, total):
             if event.is_set():
                 return
