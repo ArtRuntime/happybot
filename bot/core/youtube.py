@@ -128,6 +128,9 @@ class YouTube:
         return bool(re.match(self.regex, url))
 
     async def search(self, query: str, m_id: int, video: bool = False) -> Track | None:
+        if "music.youtube.com" in query:
+            query = query.replace("music.youtube.com", "www.youtube.com")
+            
         _search = VideosSearch(query, limit=1, with_live=False)
         
         # Wrap the API call with temporary proxy env vars
