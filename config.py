@@ -41,8 +41,8 @@ class Config:
         
         # Proxy Configuration
         self.PROXY_HOST = getenv("PROXY_HOST")
-        self.PROXY_PORT = int(getenv("PROXY_PORT"))
-        self.PROXY_HTTP_PORT = int(getenv("PROXY_HTTP_PORT")) # Fallback/Alternative HTTP port
+        self.PROXY_PORT = int(getenv("PROXY_PORT", 0))
+        self.PROXY_HTTP_PORT = int(getenv("PROXY_HTTP_PORT", 0)) # Fallback/Alternative HTTP port
         self.PROXY_USERNAME = getenv("PROXY_USERNAME")
         self.PROXY_PASSWORD = getenv("PROXY_PASSWORD")
         self.PROXY_SCHEME = getenv("PROXY_SCHEME", "http") # "socks5" or "http"
