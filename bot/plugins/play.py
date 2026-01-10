@@ -79,11 +79,9 @@ async def play_hndlr(
     if not file:
         return await sent.edit_text(m.lang["play_usage"])
 
-    # Skip duration limit for live streams (duration_sec is 0 or None)
-    if file.duration_sec and file.duration_sec > config.DURATION_LIMIT:
-        return await sent.edit_text(
-            m.lang["play_duration_limit"].format(config.DURATION_LIMIT // 60)
-        )
+    # Block live streams (duration_sec is 0 or None)
+    if not file.duration_sec:
+        return await sent.edit_text(m.lang["play_unsupported"])
 
     if await db.is_logger():
         await utils.play_log(m, file.title, file.duration)
