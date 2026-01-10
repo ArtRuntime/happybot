@@ -182,7 +182,33 @@ class TgCall(PyTgCalls):
             pass
 
         if not media:
-            return await self.stop(chat_id)
+            # check for autoplay
+            if old_media and old_media.req_type == "search":
+                # Check if autoplay enabled
+                mode = await db.get_autoplay(chat_id)
+                new_track = None
+                if mode:
+                    # Autoplay logic with smart mode
+                    new_track = await yt.smart_autoplay(mode, previous_track=old_media)
+                if new_track:
+                    # Add to queue
+                    queue.add(chat_id, new_track)
+                    media = new_track # Set media to the new track
+                    
+                    # Notify user about autoplay
+                    _lang = await lang.get_lang(chat_id)
+                    try:
+                        await app.send_message(
+                            chat_id=chat_id,
+                            text=f"<b>Autoplay:</b> Adding <i>{new_track.title}</i> to queue..."
+                        )
+                    except:
+                        pass
+                    # Do NOT recurse. Proceed to play loop below.
+                else:
+                    return await self.stop(chat_id)
+            else:
+                return await self.stop(chat_id)
 
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])

@@ -16,3 +16,4 @@ py7zr
 async-lru 
 langgraph 
 aiohttp-socks
+PySocks

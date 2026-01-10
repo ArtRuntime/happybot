@@ -42,6 +42,9 @@ class MongoDB:
 
         self.users = []
         self.usersdb = self.db.users
+        
+        self.autoplay = {}
+        self.autoplaydb = self.db.autoplay
 
     async def connect(self) -> None:
         """Check if we can connect to the database.
@@ -222,6 +225,21 @@ class MongoDB:
             doc = await self.langdb.find_one({"_id": chat_id})
             self.lang[chat_id] = doc["lang"] if doc else "en"
         return self.lang[chat_id]
+
+    # AUTOPLAY METHODS
+    async def set_autoplay(self, chat_id: int, status: str | bool):
+        await self.autoplaydb.update_one(
+            {"_id": chat_id},
+            {"$set": {"status": status}},
+            upsert=True,
+        )
+        self.autoplay[chat_id] = status
+
+    async def get_autoplay(self, chat_id: int) -> str | bool:
+        if chat_id not in self.autoplay:
+            doc = await self.autoplaydb.find_one({"_id": chat_id})
+            self.autoplay[chat_id] = doc["status"] if doc else False
+        return self.autoplay[chat_id]
 
     # LOGGER METHODS
     async def is_logger(self) -> bool:
