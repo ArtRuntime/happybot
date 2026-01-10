@@ -5,15 +5,10 @@
 
 import asyncio
 import importlib
-
 from pyrogram import idle
-
 from bot import (anon, app, config, db,
                    logger, stop, userbot, yt)
 from bot.plugins import all_modules
-
-
-
 import socket
 import dns.resolver
 
@@ -44,6 +39,15 @@ async def main():
 
     if config.COOKIES_URL:
         await yt.save_cookies(config.COOKIES_URL)
+        
+        # Start background cookie refresh task
+        async def cookie_refresh_loop():
+            while True:
+                await asyncio.sleep(config.COOKIE_REFRESH_INTERVAL)
+                logger.info("Refreshing cookies from COOKIES_URL...")
+                await yt.save_cookies(config.COOKIES_URL)
+        
+        asyncio.create_task(cookie_refresh_loop())
 
     sudoers = await db.get_sudoers()
     app.sudoers.update(sudoers)

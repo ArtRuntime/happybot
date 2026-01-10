@@ -3,6 +3,7 @@
 # This file is part of happybot
 
 
+import asyncio
 import os
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
                       RTMPStreamingUnsupported)
@@ -32,7 +33,15 @@ class TgCall(PyTgCalls):
     async def stop(self, chat_id: int) -> None:
         client = await db.get_assistant(chat_id)
         
-        # Cleanup download
+        # Cancel any active preload for this chat
+        if chat_id in self._preload_tasks:
+            self._preload_cancelled.add(chat_id)
+            try:
+                self._preload_tasks[chat_id].cancel()
+            except:
+                pass
+        
+        # Cleanup current song
         media = queue.get_current(chat_id)
         if media:
             if media.file_path and os.path.exists(media.file_path):
@@ -48,6 +57,24 @@ class TgCall(PyTgCalls):
                     os.remove(thumb_path)
                 except:
                     pass
+        
+        # Cleanup ALL queued songs (including preloaded/cached ones)
+        all_queued = queue.get_queue(chat_id)
+        if all_queued:
+            for item in all_queued:
+                if item.file_path and os.path.exists(item.file_path):
+                    try:
+                        os.remove(item.file_path)
+                        logger.info(f"Cleaned up cached file: {item.file_path}")
+                    except:
+                        pass
+                # Cleanup thumbnail
+                thumb_path = f"cache/{item.id}.png"
+                if os.path.exists(thumb_path):
+                    try:
+                        os.remove(thumb_path)
+                    except:
+                        pass
 
         try:
             queue.clear(chat_id)
@@ -60,6 +87,70 @@ class TgCall(PyTgCalls):
         except:
             pass
 
+    # Track active preload tasks per chat
+    _preload_tasks: dict[int, asyncio.Task] = {}
+    _preload_cancelled: set[int] = set()
+
+    async def _preload_next_song(self, chat_id: int, current_track: Track) -> None:
+        """Proactively predict and download the next song in background."""
+        try:
+            mode = await db.get_autoplay(chat_id)
+            if not mode:
+                return
+            
+            # Check if cancelled before starting
+            if chat_id in self._preload_cancelled:
+                self._preload_cancelled.discard(chat_id)
+                return
+            
+            # Predict next song
+            next_track = await yt.smart_autoplay(mode, previous_track=current_track)
+            if not next_track:
+                logger.info(f"Autoplay preload: No prediction for chat {chat_id}")
+                return
+            
+            # Check if cancelled before downloading
+            if chat_id in self._preload_cancelled:
+                self._preload_cancelled.discard(chat_id)
+                return
+            
+            # Download in background
+            next_track.file_path = await yt.download(next_track.id, video=next_track.video)
+            
+            # Check if cancelled after download (cleanup if needed)
+            if chat_id in self._preload_cancelled:
+                self._preload_cancelled.discard(chat_id)
+                if next_track.file_path and os.path.exists(next_track.file_path):
+                    try:
+                        os.remove(next_track.file_path)
+                        logger.info(f"Autoplay preload: Cleaned cancelled download: {next_track.file_path}")
+                    except:
+                        pass
+                return
+            
+            if not next_track.file_path:
+                logger.warning(f"Autoplay preload: Download failed for {next_track.title}")
+                return
+            
+            # Add to queue (if still no next song and call is active)
+            if await db.get_call(chat_id) and not queue.get_next(chat_id, check=True):
+                queue.add(chat_id, next_track)
+                logger.info(f"Autoplay preload: Queued '{next_track.title}' for chat {chat_id}")
+            else:
+                # If call ended, cleanup the downloaded file
+                if next_track.file_path and os.path.exists(next_track.file_path):
+                    try:
+                        os.remove(next_track.file_path)
+                    except:
+                        pass
+        except asyncio.CancelledError:
+            logger.info(f"Autoplay preload: Cancelled for chat {chat_id}")
+        except Exception as e:
+            logger.warning(f"Autoplay preload error: {e}")
+        finally:
+            # Remove from active tasks
+            if chat_id in self._preload_tasks:
+                del self._preload_tasks[chat_id]
 
     async def play_media(
         self,
@@ -108,7 +199,8 @@ class TgCall(PyTgCalls):
                     media.duration,
                     media.user,
                 )
-                keyboard = buttons.controls(chat_id)
+                autoplay_status = await db.get_autoplay(chat_id)
+                keyboard = buttons.controls(chat_id, autoplay=autoplay_status)
                 try:
                     await message.edit_media(
                         media=InputMediaPhoto(
@@ -124,6 +216,11 @@ class TgCall(PyTgCalls):
                         caption=text,
                         reply_markup=keyboard,
                     )).id
+                
+                # Proactive autoplay preload - predict and download next song in background
+                if autoplay_status and media.req_type == "search" and not queue.get_next(chat_id, check=True):
+                    task = asyncio.create_task(self._preload_next_song(chat_id, media))
+                    self._preload_tasks[chat_id] = task
         except FileNotFoundError:
             await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             await self.play_next(chat_id)

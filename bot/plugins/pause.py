@@ -20,7 +20,8 @@ async def _pause(_, m: types.Message):
         return await m.reply_text(m.lang["play_already_paused"])
 
     await anon.pause(m.chat.id)
+    autoplay_status = await db.get_autoplay(m.chat.id)
     await m.reply_text(
         text=m.lang["play_paused"].format(m.from_user.mention),
-        reply_markup=buttons.controls(m.chat.id),
+        reply_markup=buttons.controls(m.chat.id, autoplay=autoplay_status),
     )

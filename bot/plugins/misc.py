@@ -82,38 +82,66 @@ async def update_timer(length=10):
                     remove = False
                     timer = f"{time.strftime('%M:%S', time.gmtime(played))} | {timer} | -{time.strftime('%M:%S', time.gmtime(remaining))}"
 
+                autoplay_status = await db.get_autoplay(chat_id)
                 await app.edit_message_reply_markup(
                     chat_id=chat_id,
                     message_id=message_id,
                     reply_markup=buttons.controls(
-                        chat_id=chat_id, timer=timer, remove=remove
+                        chat_id=chat_id, timer=timer, remove=remove, autoplay=autoplay_status
                     ),
                 )
             except Exception:
                 pass
 
 
+# AFK tracker - stores last activity time for each chat
+afk_tracker = {}
+
 async def vc_watcher(sleep=15):
+    """AFK Protector - stops playback if no listeners for AFK_TIMEOUT seconds."""
     while True:
         await asyncio.sleep(sleep)
         for chat_id in list(db.active_calls):
-            client = await db.get_assistant(chat_id)
-            media = queue.get_current(chat_id)
-            participants = await client.get_participants(chat_id)
-            if len(participants) < 2 and media.time > 30:
-                _lang = await lang.get_lang(chat_id)
-                try:
-                    sent = await app.edit_message_reply_markup(
-                        chat_id=chat_id,
-                        message_id=media.message_id,
-                        reply_markup=buttons.controls(
-                            chat_id=chat_id, status=_lang["stopped"], remove=True
-                        ),
-                    )
-                    await anon.stop(chat_id)
-                    await sent.reply_text(_lang["auto_left"])
-                except errors.MessageIdInvalid:
-                    pass
+            try:
+                client = await db.get_assistant(chat_id)
+                media = queue.get_current(chat_id)
+                if not media:
+                    continue
+                    
+                participants = await client.get_participants(chat_id)
+                listener_count = len(participants) - 1  # Exclude the bot itself
+                
+                if listener_count < 1:
+                    # No listeners - track AFK time
+                    if chat_id not in afk_tracker:
+                        afk_tracker[chat_id] = time.time()
+                    
+                    afk_duration = time.time() - afk_tracker[chat_id]
+                    
+                    # Check if AFK timeout reached
+                    if afk_duration >= config.AFK_TIMEOUT:
+                        _lang = await lang.get_lang(chat_id)
+                        try:
+                            autoplay_status = await db.get_autoplay(chat_id)
+                            await app.edit_message_reply_markup(
+                                chat_id=chat_id,
+                                message_id=media.message_id,
+                                reply_markup=buttons.controls(
+                                    chat_id=chat_id, status=_lang["stopped"], remove=True, autoplay=autoplay_status
+                                ),
+                            )
+                            await anon.stop(chat_id)
+                            afk_mins = config.AFK_TIMEOUT // 60
+                            await app.send_message(chat_id, f"🛑 <b>Stopped due to inactivity.</b>\n\nNo listeners for {afk_mins} minutes.")
+                            del afk_tracker[chat_id]
+                        except errors.MessageIdInvalid:
+                            pass
+                else:
+                    # Listeners present - reset AFK tracker
+                    if chat_id in afk_tracker:
+                        del afk_tracker[chat_id]
+            except Exception:
+                pass
 
 
 if config.AUTO_END:

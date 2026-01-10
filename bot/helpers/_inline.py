@@ -23,6 +23,7 @@ class Inline:
         status: str = None,
         timer: str = None,
         remove: bool = False,
+        autoplay: bool | str = False,
     ) -> types.InlineKeyboardMarkup:
         keyboard = []
         if status:
@@ -35,6 +36,7 @@ class Inline:
             )
 
         if not remove:
+            # Playback controls row
             keyboard.append(
                 [
                     self.ikb(text="▷", callback_data=f"controls resume {chat_id}"),
@@ -43,6 +45,12 @@ class Inline:
                     self.ikb(text="‣‣I", callback_data=f"controls skip {chat_id}"),
                     self.ikb(text="▢", callback_data=f"controls stop {chat_id}"),
                 ]
+            )
+            # Autoplay toggle button (✅ = enabled, ❌ = disabled)
+            autoplay_icon = "✅" if autoplay else "❌"
+            autoplay_label = f"Autoplay {autoplay_icon}"
+            keyboard.append(
+                [self.ikb(text=autoplay_label, callback_data=f"controls autoplay {chat_id}")]
             )
         return self.ikm(keyboard)
 
@@ -57,10 +65,10 @@ class Inline:
                 ]
             ]
         else:
-            cbs = ["admins", "auth", "blist", "lang", "ping", "play", "queue", "stats", "sudo"]
+            cbs = ["admins", "auth", "autoplay", "blist", "lang", "ping", "play", "queue", "stats", "sudo"]
             buttons = [
-                self.ikb(text=_lang[f"help_{i}"], callback_data=f"help {cb}")
-                for i, cb in enumerate(cbs)
+                self.ikb(text=cb.capitalize(), callback_data=f"help {cb}")
+                for cb in cbs
             ]
             rows = [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
 

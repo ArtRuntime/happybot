@@ -325,13 +325,24 @@ class YouTube:
 
     # Artist/Channel hints for genre detection
     ARTIST_HINTS = {
-        "kpop": ["bts", "blackpink", "twice", "stray kids", "newjeans", "aespa", "itzy", "txt", "enhypen", "ive"],
-        "anime": ["naruto", "one piece", "demon slayer", "attack on titan", "jujutsu", "my hero", "sword art", "tokyo ghoul"],
-        "lofi": ["lofi girl", "chillhop", "lofi hip hop", "study beats", "chill beats"],
-        "classical": ["beethoven", "mozart", "chopin", "bach", "vivaldi", "orchestra", "symphony"],
-        "hiphop": ["drake", "kendrick", "travis scott", "eminem", "kanye", "jay-z", "50 cent", "lil"],
-        "electronic": ["avicii", "marshmello", "deadmau5", "skrillex", "tiesto", "david guetta", "martin garrix"],
-        "bollywood": ["arijit", "neha kakkar", "atif aslam", "shreya ghoshal", "kumar sanu", "lata mangeshkar", "kishore kumar"],
+        "kpop": ["bts", "blackpink", "twice", "stray kids", "newjeans", "aespa", "itzy", "txt", "enhypen", "ive", "nct", "exo", "red velvet", "seventeen"],
+        "anime": ["naruto", "one piece", "demon slayer", "attack on titan", "jujutsu", "my hero", "sword art", "tokyo ghoul", "op/ed", "opening", "ending"],
+        "lofi": ["lofi girl", "chillhop", "lofi hip hop", "study beats", "chill beats", "study music"],
+        "classical": ["beethoven", "mozart", "chopin", "bach", "vivaldi", "orchestra", "symphony", "piano solo"],
+        "hiphop": ["drake", "kendrick", "travis scott", "eminem", "kanye", "jay-z", "50 cent", "lil ", "21 savage", "j cole"],
+        "electronic": ["avicii", "marshmello", "deadmau5", "skrillex", "tiesto", "david guetta", "martin garrix", "alan walker"],
+        "bollywood": ["arijit", "neha kakkar", "atif aslam", "shreya ghoshal", "kumar sanu", "lata mangeshkar", "kishore kumar", "armaan malik", "jubin nautiyal", "b praak"],
+        "punjabi": ["sidhu moose", "ap dhillon", "diljit", "karan aujla", "imran khan", "guru randhawa", "harrdy sandhu"],
+    }
+    
+    # Language hints for detecting song language
+    LANGUAGE_HINTS = {
+        "hindi": ["hindi", "bollywood", "arijit", "shreya", "neha kakkar", "jubin", "t-series", "zee music", "tips official", "sony music india"],
+        "punjabi": ["punjabi", "sidhu", "diljit", "karan aujla", "ap dhillon", "speed records", "geet mp3"],
+        "korean": ["korean", "kpop", "k-pop", "bts", "blackpink", "twice", "hybe", "jyp", "sm entertainment", "yg"],
+        "japanese": ["japanese", "jpop", "j-pop", "anime", "yoasobi", "kenshi yonezu", "official髭男dism"],
+        "spanish": ["spanish", "latino", "reggaeton", "bad bunny", "j balvin", "daddy yankee", "ozuna", "karol g"],
+        "english": ["billboard", "vevo", "official video", "lyrics"],  # Default fallback
     }
     
     KEYWORD_SUFFIXES = [
@@ -339,16 +350,26 @@ class YouTube:
         "playlist 2024", "music video", "new songs", "popular songs"
     ]
 
-    def _detect_genre(self, track: Track) -> tuple[str | None, str | None]:
-        """Detect genre and artist based on title and channel keywords."""
+    def _detect_genre(self, track: Track) -> tuple[str | None, str | None, str | None]:
+        """Detect genre, artist, and language from title and channel."""
         if not track:
-            return None, None
+            return None, None, None
             
         text = (track.title + " " + (track.channel_name or "")).lower()
         artist = None
         genre = None
+        language = None
         
-        # Check artist hints first (more specific)
+        # Detect language first
+        for lang, hints in self.LANGUAGE_HINTS.items():
+            for hint in hints:
+                if hint in text:
+                    language = lang
+                    break
+            if language:
+                break
+        
+        # Check artist hints (more specific)
         for g, artists in self.ARTIST_HINTS.items():
             for a in artists:
                 if a in text:
@@ -372,25 +393,30 @@ class YouTube:
             elif "edm" in text or "house" in text: genre = "electronic"
             elif "rnb" in text or "r&b" in text: genre = "rnb"
             elif "hindi" in text or "bollywood" in text: genre = "bollywood"
+            elif "punjabi" in text: genre = "punjabi"
         
-        # Try to extract artist from channel name if not found
+        # Extract artist from channel name if not found
         if not artist and track.channel_name:
-            # Use channel name as potential artist
             artist = track.channel_name.replace(" - Topic", "").replace("VEVO", "").strip()
         
-        return genre, artist
+        return genre, artist, language
 
-    def _generate_dynamic_keyword(self, genre: str | None, artist: str | None, previous_title: str = None) -> str:
-        """Generate a dynamic search keyword based on detected genre/artist."""
+    def _generate_dynamic_keyword(self, genre: str | None, artist: str | None, language: str | None = None, previous_title: str = None) -> str:
+        """Generate a dynamic search keyword based on detected genre/artist/language."""
         import random
+        
+        # Language-specific prefixes
+        lang_prefix = ""
+        if language and language != "english":
+            lang_prefix = f"{language} "
         
         if artist and len(artist) > 2:
             # Artist-based queries for variety
             artist_queries = [
                 f"songs like {artist}",
                 f"{artist} type songs",
-                f"artists similar to {artist}",
-                f"{artist} best songs",
+                f"{lang_prefix}{artist} best songs",
+                f"{artist} similar artists",
             ]
             return random.choice(artist_queries)
         
@@ -399,11 +425,21 @@ class YouTube:
             base_keywords = self.GENRE_KEYWORDS[genre]
             suffix = random.choice(self.KEYWORD_SUFFIXES)
             
-            # 50% chance to use predefined, 50% to generate dynamic
+            # 50% chance to use predefined, 50% to generate dynamic with language
             if random.random() > 0.5:
                 return random.choice(base_keywords)
             else:
-                return f"{genre} {suffix}"
+                return f"{lang_prefix}{genre} {suffix}"
+        
+        # Language-based fallback if no genre
+        if language and language != "english":
+            lang_queries = [
+                f"{language} songs 2024",
+                f"best {language} songs",
+                f"{language} music playlist",
+                f"new {language} songs",
+            ]
+            return random.choice(lang_queries)
         
         # Fallback: use previous title keywords if available
         if previous_title:
@@ -412,7 +448,7 @@ class YouTube:
             skip = {"the", "a", "an", "of", "to", "in", "for", "on", "with", "by", "-", "|", "official", "video", "audio", "lyrics"}
             keywords = [w for w in words if w not in skip and len(w) > 2]
             if keywords:
-                return " ".join(keywords) + " songs"
+                return f"{lang_prefix}" + " ".join(keywords) + " songs"
         
         # Ultimate fallback
         return random.choice(self.GENRE_KEYWORDS["random"])
@@ -477,18 +513,19 @@ class YouTube:
              
         genre = None
         artist = None
+        language = None
         previous_title = previous_track.title if previous_track else None
         
-        # 1. Determine Genre/Artist from previous track
+        # 1. Determine Genre/Artist/Language from previous track
         if mode == "smart" and previous_track:
-            genre, artist = self._detect_genre(previous_track)
-            logger.info(f"Smart Autoplay: Detected genre={genre}, artist={artist}")
+            genre, artist, language = self._detect_genre(previous_track)
+            logger.info(f"Smart Autoplay: Detected genre={genre}, artist={artist}, language={language}")
         elif mode in self.GENRE_KEYWORDS:
             genre = mode
         
         # 2. Generate dynamic keyword
-        keyword = self._generate_dynamic_keyword(genre, artist, previous_title)
-        logger.info(f"Smart Autoplay: Searching '{keyword}' (Genre: {genre}, Artist: {artist})")
+        keyword = self._generate_dynamic_keyword(genre, artist, language, previous_title)
+        logger.info(f"Smart Autoplay: Searching '{keyword}' (Genre: {genre}, Artist: {artist}, Lang: {language})")
         
         # 3. Search with retry logic
         for attempt in range(3):
@@ -519,7 +556,7 @@ class YouTube:
                 )
             
             # If no results passed filter, regenerate keyword and retry
-            keyword = self._generate_dynamic_keyword(genre, artist, previous_title)
+            keyword = self._generate_dynamic_keyword(genre, artist, language, previous_title)
 
         return None
 
