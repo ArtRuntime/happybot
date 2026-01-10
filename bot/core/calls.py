@@ -498,11 +498,50 @@ class TgCall(PyTgCalls):
                         await self.stop(update.chat_id)
 
 
+    async def add_pytgcalls_client(self, userbot_client) -> PyTgCalls:
+        """
+        Dynamically add a PyTgCalls client for a new assistant.
+        
+        Args:
+            userbot_client: The Pyrogram userbot client
+            
+        Returns:
+            The started PyTgCalls client
+        """
+        client = PyTgCalls(userbot_client, cache_duration=100)
+        await client.start()
+        self.clients.append(client)
+        await self.decorators(client)
+        logger.info(f"PyTgCalls client added for {userbot_client.name}")
+        return client
+
+    async def remove_pytgcalls_client(self, userbot_client) -> bool:
+        """
+        Dynamically remove a PyTgCalls client.
+        
+        Args:
+            userbot_client: The Pyrogram userbot client to remove
+            
+        Returns:
+            True if removed, False if not found
+        """
+        # Find the PyTgCalls client for this userbot
+        tgcalls_client = None
+        for client in self.clients:
+            if client.session == userbot_client:
+                tgcalls_client = client
+                break
+        
+        if not tgcalls_client:
+            return False
+        
+        # Remove from list
+        self.clients.remove(tgcalls_client)
+        logger.info(f"PyTgCalls client removed for {userbot_client.name}")
+        return True
+
     async def boot(self) -> None:
         PyTgCallsSession.notice_displayed = True
         for ub in userbot.clients:
-            client = PyTgCalls(ub, cache_duration=100)
-            await client.start()
-            self.clients.append(client)
-            await self.decorators(client)
+            await self.add_pytgcalls_client(ub)
         logger.info("PyTgCalls client(s) started.")

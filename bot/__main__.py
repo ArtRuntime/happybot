@@ -18,6 +18,33 @@ import subprocess
 import time
 import os
 
+# --- Monkeypatch for PyTgCalls Compatibility ---
+# py-tgcalls expects UpdateGroupCall to have .chat.id, but kurigram's Raw UpdateGroupCall 
+# only has .peer (PeerChannel/PeerChat). We add a proxy .chat property.
+try:
+    from pyrogram.raw.types import UpdateGroupCall
+    
+    class MockChat:
+        def __init__(self, peer):
+            self._peer = peer
+        
+        @property
+        def id(self):
+            if hasattr(self._peer, "channel_id"):
+                return self._peer.channel_id
+            if hasattr(self._peer, "chat_id"):
+                return self._peer.chat_id
+            return 0
+
+    if not hasattr(UpdateGroupCall, "chat"):
+        logger.info("Applying UpdateGroupCall monkeypatch for PyTgCalls...")
+        setattr(UpdateGroupCall, "chat", property(lambda self: MockChat(self.peer)))
+except ImportError:
+    pass
+except Exception as e:
+    logger.error(f"Failed to apply monkeypatch: {e}")
+# -----------------------------------------------
+
 async def main():
     if config.PROXY_URL:
         # Log Proxy Config (Masked)

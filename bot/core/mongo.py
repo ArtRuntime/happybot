@@ -45,6 +45,10 @@ class MongoDB:
         
         self.autoplay = {}
         self.autoplaydb = self.db.autoplay
+        
+        # Sessions collection for dynamic assistant management
+        self.sessions = []
+        self.sessionsdb = self.db.sessions
 
     async def connect(self) -> None:
         """Check if we can connect to the database.
@@ -137,9 +141,12 @@ class MongoDB:
     async def get_client(self, chat_id: int):
         if chat_id not in self.assistant:
             await self.get_assistant(chat_id)
-        return {1: userbot.one, 2: userbot.two, 3: userbot.three}.get(
-            self.assistant[chat_id]
-        )
+        
+        # Get client by index (1-based to 0-based)
+        client_index = self.assistant[chat_id] - 1
+        if 0 <= client_index < len(userbot.clients):
+            return userbot.clients[client_index]
+        return None
 
     # BLACKLIST METHODS
     async def add_blacklist(self, chat_id: int) -> None:
@@ -359,6 +366,55 @@ class MongoDB:
         await self.cache.insert_one({"_id": "migrated"})
         logger.info("Migration completed.")
 
+    # SESSION METHODS
+    async def get_sessions(self) -> list[dict]:
+        """Get all active sessions from database."""
+        if not self.sessions:
+            sessions = []
+            async for session in self.sessionsdb.find({"status": "active"}):
+                sessions.append(session)
+            self.sessions = sessions
+        return self.sessions
+
+    async def add_session(self, session_string: str, name: str, user_id: int) -> dict:
+        """Add a new session to database."""
+        from datetime import datetime
+        
+        # Check if name already exists
+        existing = await self.sessionsdb.find_one({"name": name})
+        if existing:
+            raise ValueError(f"Session with name '{name}' already exists")
+        
+        session_doc = {
+            "session_string": session_string,
+            "name": name,
+            "added_by": user_id,
+            "added_at": datetime.now(),
+            "status": "active"
+        }
+        
+        result = await self.sessionsdb.insert_one(session_doc)
+        session_doc["_id"] = result.inserted_id
+        self.sessions.append(session_doc)
+        return session_doc
+
+    async def remove_session(self, name: str) -> bool:
+        """Mark a session as inactive (soft delete)."""
+        result = await self.sessionsdb.update_one(
+            {"name": name, "status": "active"},
+            {"$set": {"status": "inactive"}}
+        )
+        
+        if result.modified_count > 0:
+            # Remove from cache
+            self.sessions = [s for s in self.sessions if s["name"] != name]
+            return True
+        return False
+
+    async def get_session_by_name(self, name: str) -> dict | None:
+        """Get a specific session by name."""
+        return await self.sessionsdb.find_one({"name": name, "status": "active"})
+
     async def load_cache(self) -> None:
         doc = await self.cache.find_one({"_id": "migrated"})
         if not doc:
@@ -368,4 +424,5 @@ class MongoDB:
         await self.get_users()
         await self.get_blacklisted(True)
         await self.get_logger()
+        await self.get_sessions()  # Load sessions into cache
         logger.info("Database cache loaded.")

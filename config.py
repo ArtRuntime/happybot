@@ -19,7 +19,8 @@ class Config:
         self.QUEUE_LIMIT = int(getenv("QUEUE_LIMIT", 20))
         self.PLAYLIST_LIMIT = int(getenv("PLAYLIST_LIMIT", 20))
 
-        self.SESSION1 = getenv("SESSION", None)
+        # Sessions (optional - now stored in MongoDB)
+        self.SESSION1 = getenv("SESSION", None) or getenv("SESSION1", None)
         self.SESSION2 = getenv("SESSION2", None)
         self.SESSION3 = getenv("SESSION3", None)
 
@@ -48,6 +49,9 @@ class Config:
         self.ENABLE_DIRECT_STREAMING = getenv("ENABLE_DIRECT_STREAMING", "true").lower() in ("true", "1", "yes")
         self.STREAM_QUALITY = getenv("STREAM_QUALITY", "medium")  # low, medium, high
         
+        # yt-dlp logging
+        self.YTDLP_VERBOSE = getenv("YTDLP_VERBOSE", "false").lower() in ("true", "1", "yes")
+        
         # Proxy Configuration
         self.PROXY_HOST = getenv("PROXY_HOST", "127.0.0.1")
         self.PROXY_PORT = int(getenv("PROXY_PORT") or getenv("PROXY_HTTP_PORT") or 0)
@@ -75,8 +79,9 @@ class Config:
     def check(self):
         missing = [
             var
-            for var in ["API_ID", "API_HASH", "BOT_TOKEN", "MONGO_URL", "LOGGER_ID", "OWNER_ID", "SESSION1"]
+            for var in ["API_ID", "API_HASH", "BOT_TOKEN", "MONGO_URL", "LOGGER_ID", "OWNER_ID"]
             if not getattr(self, var)
         ]
         if missing:
             raise SystemExit(f"Missing required environment variables: {', '.join(missing)}")
+

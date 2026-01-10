@@ -254,13 +254,16 @@ class YouTube:
 
     class YtDlpLogger:
         def debug(self, msg):
-            if not msg.startswith('[debug] '):
+            if config.YTDLP_VERBOSE and not msg.startswith('[debug] '):
                 logger.info(f"yt-dlp: {msg}")
         def info(self, msg):
-            logger.info(f"yt-dlp: {msg}")
+            if config.YTDLP_VERBOSE:
+                logger.info(f"yt-dlp: {msg}")
         def warning(self, msg):
-            logger.warning(f"yt-dlp: {msg}")
+            if config.YTDLP_VERBOSE:
+                logger.warning(f"yt-dlp: {msg}")
         def error(self, msg):
+            # Always show errors, they're critical
             logger.error(f"yt-dlp: {msg}")
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
