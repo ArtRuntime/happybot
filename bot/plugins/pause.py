@@ -4,9 +4,10 @@
 
 
 from pyrogram import filters, types
+from pyrogram.types import InputMediaPhoto
 
-from bot import anon, app, db, lang
-from bot.helpers import buttons, can_manage_vc
+from bot import anon, app, config, db, lang, queue
+from bot.helpers import buttons, can_manage_vc, thumb
 
 
 @app.on_message(filters.command(["pause"]) & filters.group & ~app.bl_users)
@@ -21,7 +22,37 @@ async def _pause(_, m: types.Message):
 
     await anon.pause(m.chat.id)
     autoplay_status = await db.get_autoplay(m.chat.id)
-    await m.reply_text(
-        text=m.lang["play_paused"].format(m.from_user.mention),
-        reply_markup=buttons.controls(m.chat.id, autoplay=autoplay_status),
-    )
+    
+    # Delete command message to keep chat clean
+    try:
+        await m.delete()
+    except:
+        pass
+    
+    # Get current media to edit player message
+    media = queue.get_current(m.chat.id)
+    if media and media.message_id:
+        _thumb = await thumb.generate(media)
+        if not _thumb:
+            _thumb = config.DEFAULT_THUMB
+        
+        text = f"⏸️ <u><b>Stream Paused</b></u>\n\n<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n<b>Duration:</b> {media.duration} min\n<b>Paused by:</b> {m.from_user.mention}"
+        
+        try:
+            await app.edit_message_media(
+                chat_id=m.chat.id,
+                message_id=media.message_id,
+                media=InputMediaPhoto(media=_thumb, caption=text),
+                reply_markup=buttons.controls(m.chat.id, status=m.lang["paused"], autoplay=autoplay_status),
+            )
+        except:
+            # Fallback to reply if edit fails
+            await m.reply_text(
+                text=m.lang["play_paused"].format(m.from_user.mention),
+                reply_markup=buttons.controls(m.chat.id, autoplay=autoplay_status),
+            )
+    else:
+        await m.reply_text(
+            text=m.lang["play_paused"].format(m.from_user.mention),
+            reply_markup=buttons.controls(m.chat.id, autoplay=autoplay_status),
+        )

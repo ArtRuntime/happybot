@@ -10,6 +10,5 @@ queue - Show the list of queued tracks
 seek - Seek forward
 seekback - Seek backward
 autoplay - Toggle smart autoplay mode
-settings - Configure playback settings
 ping - Check bot latency and status
 stats - Show bot statistics

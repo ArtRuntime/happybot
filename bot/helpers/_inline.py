@@ -155,8 +155,6 @@ class Inline:
                 self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL),
             ],
         ]
-        if not private:
-            rows += [[self.ikb(text=lang["language"], callback_data="language")]]
         return self.ikm(rows)
 
     def yt_key(self, link: str) -> types.InlineKeyboardMarkup:

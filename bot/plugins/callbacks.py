@@ -128,19 +128,30 @@ async def _controls(_, query: types.CallbackQuery):
             await query.message.reply_text(reply, quote=False)
             await query.message.delete()
         else:
-            mtext = re.sub(
-                r"\n\n<blockquote>.*?</blockquote>",
-                "",
-                query.message.caption.html or query.message.text.html,
-                flags=re.DOTALL,
-            )
+            # Get current media for updated caption
+            media = queue.get_current(chat_id)
             autoplay_status = await db.get_autoplay(chat_id)
+            
+            if action == "pause" and media:
+                new_caption = f"⏸️ <u><b>Stream Paused</b></u>\n\n<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n<b>Duration:</b> {media.duration} min\n<b>Paused by:</b> {user}"
+            elif action == "resume" and media:
+                new_caption = f"▶️ <u><b>Stream Resumed</b></u>\n\n<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n<b>Duration:</b> {media.duration} min\n<b>Resumed by:</b> {user}"
+            else:
+                # Fallback to old behavior for other cases
+                mtext = re.sub(
+                    r"\n\n<blockquote>.*?</blockquote>",
+                    "",
+                    query.message.caption.html if query.message.caption else query.message.text.html,
+                    flags=re.DOTALL,
+                )
+                new_caption = f"{mtext}\n\n<blockquote>{reply}</blockquote>"
+            
             keyboard = buttons.controls(
-                chat_id, status=status if action != "resume" else None, autoplay=autoplay_status
+                chat_id, status=status if action == "pause" else None, autoplay=autoplay_status
             )
-        await query.edit_message_text(
-            f"{mtext}\n\n<blockquote>{reply}</blockquote>", reply_markup=keyboard
-        )
+            await query.edit_message_caption(
+                caption=new_caption, reply_markup=keyboard
+            )
     except:
         pass
 

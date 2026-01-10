@@ -13,6 +13,12 @@ from bot.helpers import can_manage_vc
 @lang.language()
 @can_manage_vc
 async def _stop(_, m: types.Message):
+    # Delete command message first to keep chat clean
+    try:
+        await m.delete()
+    except:
+        pass
+    
     if len(m.command) > 1:
         return
     if not await db.get_call(m.chat.id):
