@@ -347,6 +347,80 @@ class YouTube:
             return filename
 
         return await asyncio.to_thread(_download)
+    
+    async def get_stream_url(self, video_id: str, video: bool = False) -> str | None:
+        """
+        Get direct stream URL without downloading (for instant playback).
+        
+        Args:
+            video_id: YouTube video ID or URL
+            video: Whether to get video stream (True) or audio stream (False)
+        
+        Returns:
+            Direct HTTP/HTTPS stream URL, or None if failed
+        """
+        if video_id.startswith("http"):
+            url = video_id
+        else:
+            url = self.base + video_id
+        
+        cookie = self.get_cookies()
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "geo_bypass": True,
+            "nocheckcertificate": True,
+            "cookiefile": cookie,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["tv"],
+                }
+            },
+        }
+        
+        # Select format
+        if video:
+            # For video: get best quality video+audio
+            ydl_opts["format"] = "best[ext=mp4]"
+        else:
+            # For audio: get best audio
+            # Prefer m4a/opus, fallback to any audio
+            quality = getattr(config, 'STREAM_QUALITY', 'medium')
+            if quality == 'low':
+                ydl_opts["format"] = "worstaudio/worst"
+            elif quality == 'high':
+                ydl_opts["format"] = "bestaudio/best"
+            else:  # medium (default)
+                ydl_opts["format"] = "bestaudio[abr<=192]/bestaudio/best"
+        
+        try:
+            logger.info(f"Extracting stream URL for {url}")
+            
+            with proxy_env():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    # Extract info without downloading
+                    info = await asyncio.to_thread(ydl.extract_info, url, download=False)
+                    
+                    if not info:
+                        logger.error("Could not extract stream info")
+                        return None
+                    
+                    # Get direct URL
+                    stream_url = info.get('url')
+                    
+                    if not stream_url:
+                        logger.error("No stream URL found in video info")
+                        return None
+                    
+                    logger.info(f"✅ Stream URL extracted (expires in ~6 hours)")
+                    return stream_url
+                    
+        except Exception as e:
+            logger.error(f"Failed to extract stream URL: {e}")
+            if cookie:
+                self.cookies.remove(cookie)
+            return None
 
     GENRE_KEYWORDS = {
         "pop": ["pop music 2024", "top pop songs", "pop hits official", "best pop music"],

@@ -72,7 +72,7 @@
     "play_now": "▶️ Play Now",
     "play_next": "⏭️ Hold on…\n\nDownloading the next track from the queue.",
     "play_invite": "📨 Hold on…\n\nInviting <b>{0}</b> assistant to your chat.",
-    "play_searching": "🔎 Searching…",
+    "play_searching": "🔎 Initializing …",
     "play_downloading": "📥 Downloading…",
     "play_paused": "⏸️ <b>Stream paused by</b> {0}",
     "play_resumed": "▶️ <b>Stream resumed by</b> {0}",

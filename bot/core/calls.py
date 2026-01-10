@@ -134,8 +134,17 @@ class TgCall(PyTgCalls):
                 self._preload_cancelled.discard(chat_id)
                 return
             
-            # Download in background
-            next_track.file_path = await yt.download(next_track.id, video=next_track.video)
+            # Get file/stream URL
+            from bot import config
+            if config.ENABLE_DIRECT_STREAMING and not next_track.url.startswith("t.me"):
+                # Direct streaming for YouTube/external URLs
+                next_track.file_path = await yt.get_stream_url(next_track.id, video=next_track.video)
+                if not next_track.file_path:
+                    logger.warning(f"Stream URL extraction failed, falling back to download")
+                    next_track.file_path = await yt.download(next_track.id, video=next_track.video)
+            else:
+                # Download for Telegram files or if streaming disabled
+                next_track.file_path = await yt.download(next_track.id, video=next_track.video)
             
             # Check if cancelled after download (cleanup if needed)
             if chat_id in self._preload_cancelled:
@@ -387,8 +396,19 @@ class TgCall(PyTgCalls):
 
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
-        if not media.file_path:
-            media.file_path = await yt.download(media.id, video=media.video)
+        # Download or get stream URL
+        if media.req_type != "telegram":
+            from bot import config
+            if config.ENABLE_DIRECT_STREAMING and not media.url.startswith("t.me"):
+                # Direct streaming for YouTube/external URLs
+                logger.info(f"🎵 Using direct streaming for: {media.title}")
+                media.file_path = await yt.get_stream_url(media.id, video=media.video)
+                if not media.file_path:
+                    logger.warning(f"Stream URL extraction failed, falling back to download")
+                    media.file_path = await yt.download(media.id, video=media.video)
+            else:
+                # Download for Telegram files or if streaming disabled
+                media.file_path = await yt.download(media.id, video=media.video)
             if not media.file_path:
                 await self.stop(chat_id)
                 return await msg.edit_text(

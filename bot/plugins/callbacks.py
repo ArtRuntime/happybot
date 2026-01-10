@@ -94,7 +94,14 @@ async def _controls(_, query: types.CallbackQuery):
 
         msg = await app.send_message(chat_id=chat_id, text=query.lang["play_next"])
         if not media.file_path:
-            media.file_path = await yt.download(media.id, video=media.video)
+            # Use streaming if enabled
+            from bot import config
+            if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
+                media.file_path = await yt.get_stream_url(media.id, video=media.video)
+                if not media.file_path:
+                    media.file_path = await yt.download(media.id, video=media.video)
+            else:
+                media.file_path = await yt.download(media.id, video=media.video)
         media.message_id = msg.id
         return await anon.play_media(chat_id, msg, media)
 

@@ -118,11 +118,25 @@ async def play_hndlr(
         if Path(fname).exists():
             file.file_path = fname
         else:
-            await sent.edit_text(m.lang["play_downloading"])
-            try:
-                file.file_path = await yt.download(file.id, video=video)
-            except yt.StorageLowError:
-                return await sent.edit_text(m.lang["error_low_storage"].format(config.SUPPORT_CHAT))
+            # Use direct streaming or download based on config
+            if config.ENABLE_DIRECT_STREAMING and file.req_type != "telegram" and not file.url.startswith("t.me"):
+                # Direct streaming for YouTube/external URLs
+                await sent.edit_text(m.lang["play_downloading"])  # Keep same message
+                try:
+                    file.file_path = await yt.get_stream_url(file.id, video=video)
+                    if not file.file_path:
+                        # Fallback to download if streaming fails
+                        file.file_path = await yt.download(file.id, video=video)
+                except Exception as e:
+                    # Fallback to download on any error
+                    file.file_path = await yt.download(file.id, video=video)
+            else:
+                # Download for Telegram files or if streaming disabled
+                await sent.edit_text(m.lang["play_downloading"])
+                try:
+                    file.file_path = await yt.download(file.id, video=video)
+                except yt.StorageLowError:
+                    return await sent.edit_text(m.lang["error_low_storage"].format(config.SUPPORT_CHAT))
 
     await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
     if not tracks:

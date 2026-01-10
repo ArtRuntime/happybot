@@ -44,6 +44,10 @@ class Config:
         self.RECOMMENDATION_DATASET_PATH = getenv("RECOMMENDATION_DATASET_PATH", "bot/data/recommendations_dataset.csv")
         self.RECOMMENDATION_LIMIT = int(getenv("RECOMMENDATION_LIMIT", 10))
         
+        # Direct Streaming (stream from URL without downloading)
+        self.ENABLE_DIRECT_STREAMING = getenv("ENABLE_DIRECT_STREAMING", "true").lower() in ("true", "1", "yes")
+        self.STREAM_QUALITY = getenv("STREAM_QUALITY", "medium")  # low, medium, high
+        
         # Proxy Configuration
         self.PROXY_HOST = getenv("PROXY_HOST", "127.0.0.1")
         self.PROXY_PORT = int(getenv("PROXY_PORT") or getenv("PROXY_HTTP_PORT") or 0)
