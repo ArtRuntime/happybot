@@ -39,7 +39,8 @@ class Telegram:
         duration = getattr(media, "duration", 0)
         video = bool(getattr(media, "mime_type", "").startswith("video/"))
 
-        if duration > config.DURATION_LIMIT:
+        # Skip duration limit for live streams (duration is 0 or None)
+        if duration and duration > config.DURATION_LIMIT:
             await sent.edit_text(sent.lang["play_duration_limit"].format(config.DURATION_LIMIT // 60))
             return await sent.stop_propagation()
 

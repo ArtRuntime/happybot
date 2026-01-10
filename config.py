@@ -34,9 +34,9 @@ class Config:
             if url
         ]
         self.COOKIE_REFRESH_INTERVAL = int(getenv("COOKIE_REFRESH_INTERVAL", 5)) * 60  # Default 5 minutes
-        self.DEFAULT_THUMB = getenv("DEFAULT_THUMB", "https://te.legra.ph/file/3e40a408286d4eda24191.jpg")
-        self.PING_IMG = getenv("PING_IMG", "https://files.catbox.moe/haagg2.png")
-        self.START_IMG = getenv("START_IMG", "https://files.catbox.moe/zvziwk.jpg")
+        self.DEFAULT_THUMB = getenv("DEFAULT_THUMB", "https://images.alphacoders.com/685/thumb-1920-685120.png")
+        self.PING_IMG = getenv("PING_IMG", "https://images6.alphacoders.com/134/thumb-1920-1345576.jpeg")
+        self.START_IMG = getenv("START_IMG", "https://images3.alphacoders.com/132/thumbbig-1323165.webp")
         self.AFK_TIMEOUT = int(getenv("AFK_TIMEOUT", 5)) * 60  # Default 5 minutes
         
         # Proxy Configuration
