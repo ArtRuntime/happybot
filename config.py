@@ -40,7 +40,7 @@ class Config:
         self.AFK_TIMEOUT = int(getenv("AFK_TIMEOUT", 5)) * 60  # Default 5 minutes
         
         # Proxy Configuration
-        self.PROXY_HOST = getenv("PROXY_HOST")
+        self.PROXY_HOST = getenv("PROXY_HOST", "127.0.0.1")
         self.PROXY_PORT = int(getenv("PROXY_PORT") or getenv("PROXY_HTTP_PORT") or 0)
         self.PROXY_HTTP_PORT = int(getenv("PROXY_HTTP_PORT", 0)) # Fallback/Alternative HTTP port
         self.PROXY_USERNAME = getenv("PROXY_USERNAME")
