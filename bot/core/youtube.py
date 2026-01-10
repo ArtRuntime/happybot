@@ -89,6 +89,25 @@ class YouTube:
             r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
             r"([A-Za-z0-9_-]{11}|PL[A-Za-z0-9_-]+)([&?][^\s]*)?"
         )
+        
+        # Initialize TF-IDF recommendation engine
+        self.recommender = None
+        if config.ENABLE_TFIDF_RECOMMENDATIONS:
+            try:
+                from bot.core.recommendations import RecommendationEngine
+                # Pass MongoDB instance for data storage (with CSV fallback)
+                from bot import db
+                # db.db is the MongoDB database instance
+                mongo_db = getattr(db, 'db', None)
+                self.recommender = RecommendationEngine(
+                    dataset_path=config.RECOMMENDATION_DATASET_PATH,
+                    mongo_db=mongo_db,
+                    collection_name="recommendations"
+                )
+                logger.info("TF-IDF recommendation engine initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize recommendation engine: {e}")
+                self.recommender = None
 
     def cancel_downloads(self, chat_id: int):
         """Mark all downloads for this chat as cancelled."""
@@ -444,23 +463,32 @@ class YouTube:
     def _generate_dynamic_keyword(self, genre: str | None, artist: str | None, language: str | None = None, previous_title: str = None, attempt: int = 0) -> str:
         """Generate a dynamic search keyword based on detected genre/artist/language.
         
-        Strategy (in priority order - to avoid repetition):
-        1. Use detected genre with language (most variety)
-        2. Use detected artist (if confident)
-        3. Use language-only queries
-        4. Random fallback (last resort)
-        
-        NOTE: We intentionally DON'T use previous song title to search,
-        as this causes the same songs to repeat.
+        Strategy (REORDERED for better continuity):
+        1. **Artist-based** (BEST) - Same artist = similar songs
+        2. Genre + Language (good variety)
+        3. Language-only queries  
+        4. Random fallback
         """
         import random
         
-        # Language-specific prefix - only add if confident and not English
+        # STRATEGY 1: Artist-based search (PRIMARY - keeps same artist!)
+        if artist and len(artist) > 3:
+            generic_names = {"vevo", "official", "music", "records", "entertainment", "topic", "channel", "label"}
+            if not any(g in artist.lower() for g in generic_names):
+                # Try different artist queries based on attempt
+                if attempt == 0:
+                    return f"{artist} songs"  # Direct artist search
+                elif attempt == 1:
+                    return f"{artist} latest songs"  # Latest from artist
+                elif attempt == 2:
+                    return f"songs like {artist}"  # Similar artists
+        
+        # Language prefix for non-English
         lang_prefix = ""
         if language and language not in ("english", None):
             lang_prefix = f"{language} "
         
-        # STRATEGY 1: Genre + Language based (PRIMARY - most variety)
+        # STRATEGY 2: Genre + Language
         if genre and genre in self.GENRE_KEYWORDS:
             keywords = self.GENRE_KEYWORDS[genre]
             # Rotate through keywords based on attempt + add randomness
@@ -549,7 +577,7 @@ class YouTube:
         Smart Autoplay Logic - prioritizes continuity with previous track.
         
         Strategy:
-        1. First tries to find songs similar to the PREVIOUS TRACK TITLE
+        1. Try TF-IDF content-based recommendations (if enabled and previous track exists)
         2. Falls back to artist-based search
         3. Then genre-based search
         4. Only uses random genres as last resort
@@ -564,10 +592,66 @@ class YouTube:
         language = None
         previous_title = previous_track.title if previous_track else None
         
-        # 1. Determine Genre/Artist/Language from previous track (for fallback)
+        # STRATEGY 0: TF-IDF Content-Based Recommendations (PRIMARY)
+        if mode == "smart" and previous_track and self.recommender:
+            try:
+                logger.info(f"🎯 Trying TF-IDF recommendations for: '{previous_track.title}'")
+                # Await the async get_recommendations method
+                recommendations = await self.recommender.get_recommendations(
+                    previous_track.title, 
+                    limit=config.RECOMMENDATION_LIMIT
+                )
+                
+                if recommendations:
+                    logger.info(f"✅ Found {len(recommendations)} TF-IDF recommendations")
+                    
+                    # Try to find these recommended tracks on YouTube
+                    # Try top 5 recommendations to increase chance of finding valid tracks
+                    for i, rec_title in enumerate(recommendations[:5]):
+                        try:
+                            logger.info(f"Searching for recommended track {i+1}: '{rec_title}'")
+                            
+                            # Search for this recommended track
+                            with proxy_env():
+                                _search = VideosSearch(rec_title, limit=3, with_live=False)
+                                results = await _search.next()
+                            
+                            if results and results["result"]:
+                                # Try to find exact or close match
+                                for res in results["result"]:
+                                    # Check if it's a good track and somewhat matches the recommendation
+                                    if self._is_good_track(res, previous_title):
+                                        data = res
+                                        logger.info(f"🎵 TF-IDF Recommendation SUCCESS: '{data.get('title')}'")
+                                        
+                                        return Track(
+                                            id=data.get("id"),
+                                            channel_name=data.get("channel", {}).get("name"),
+                                            duration=data.get("duration"),
+                                            duration_sec=utils.to_seconds(data.get("duration")),
+                                            title=data.get("title")[:25],
+                                            thumbnail=data.get("thumbnails", [{}])[-1].get("url").split("?")[0],
+                                            url=data.get("link"),
+                                            view_count=data.get("viewCount", {}).get("short"),
+                                            video=previous_track.video if previous_track else False,
+                                            req_type="search"
+                                        )
+                        except Exception as e:
+                            logger.debug(f"Failed to search for recommendation '{rec_title}': {e}")
+                            continue
+                    
+                    logger.info("TF-IDF recommendations found but couldn't find valid YouTube tracks, falling back...")
+                else:
+                    logger.info("No TF-IDF recommendations found, falling back to genre detection...")
+                    
+            except Exception as e:
+                logger.warning(f"TF-IDF recommendation failed: {e}")
+                # Continue to fallback strategies
+        
+        # STRATEGY 1: Determine Genre/Artist/Language from previous track (for fallback)
         if mode == "smart" and previous_track:
             genre, artist, language = self._detect_genre(previous_track)
-            logger.info(f"Smart Autoplay: Detected genre={genre}, artist={artist}, language={language}")
+            logger.info(f"Smart Autoplay Fallback: Detected genre={genre}, artist={artist}, language={language}")
         elif mode in self.GENRE_KEYWORDS:
             # User explicitly requested a genre
             genre = mode
@@ -575,7 +659,7 @@ class YouTube:
             previous_title = None
             artist = None
         
-        # 2. Search with progressive fallback strategy
+        # STRATEGY 2: Search with progressive fallback strategy
         for attempt in range(3):
             # Generate keyword with attempt number for progressive fallback
             keyword = self._generate_dynamic_keyword(genre, artist, language, previous_title, attempt)

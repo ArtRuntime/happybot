@@ -39,6 +39,11 @@ class Config:
         self.START_IMG = getenv("START_IMG", "https://images3.alphacoders.com/132/thumbbig-1323165.webp")
         self.AFK_TIMEOUT = int(getenv("AFK_TIMEOUT", 5)) * 60  # Default 5 minutes
         
+        # TF-IDF Recommendation System (disabled - no dataset)
+        self.ENABLE_TFIDF_RECOMMENDATIONS = getenv("ENABLE_TFIDF_RECOMMENDATIONS", "true").lower() in ("true", "1", "yes")
+        self.RECOMMENDATION_DATASET_PATH = getenv("RECOMMENDATION_DATASET_PATH", "bot/data/recommendations_dataset.csv")
+        self.RECOMMENDATION_LIMIT = int(getenv("RECOMMENDATION_LIMIT", 10))
+        
         # Proxy Configuration
         self.PROXY_HOST = getenv("PROXY_HOST", "127.0.0.1")
         self.PROXY_PORT = int(getenv("PROXY_PORT") or getenv("PROXY_HTTP_PORT") or 0)

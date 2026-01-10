@@ -96,6 +96,7 @@ class TgCall(PyTgCalls):
 
     async def _preload_next_song(self, chat_id: int, current_track: Track) -> None:
         """Proactively predict and download the next song in background."""
+        next_track = None
         try:
             mode = await db.get_autoplay(chat_id)
             if not mode:
@@ -119,6 +120,16 @@ class TgCall(PyTgCalls):
                 return
             
             # Check if cancelled before downloading
+            if chat_id in self._preload_cancelled:
+                self._preload_cancelled.discard(chat_id)
+                return
+            
+            # Check if call is still active before downloading
+            if not await db.get_call(chat_id):
+                logger.info(f"Autoplay preload: Cancelled - call ended for chat {chat_id}")
+                return
+            
+            # Original check if cancelled before downloading
             if chat_id in self._preload_cancelled:
                 self._preload_cancelled.discard(chat_id)
                 return
@@ -153,21 +164,46 @@ class TgCall(PyTgCalls):
                         pass
                 return
             
-            # Add to queue (if still no next song and call is active)
-            if await db.get_call(chat_id) and not queue.get_next(chat_id, check=True):
-                queue.add(chat_id, next_track)
-                logger.info(f"Autoplay preload: Queued '{next_track.title}' for chat {chat_id}")
-            else:
-                # If call ended, cleanup the downloaded file
+            # CRITICAL: Re-check if call is still active before adding to queue
+            # This prevents adding songs after user pressed stop
+            if not await db.get_call(chat_id):
+                logger.info(f"Autoplay preload: Call ended during download - cleaning up {next_track.file_path}")
                 if next_track.file_path and os.path.exists(next_track.file_path):
                     try:
                         os.remove(next_track.file_path)
                     except:
                         pass
+                return
+            
+            # Add to queue (if still no next song and call is active)
+            if await db.get_call(chat_id) and not queue.get_next(chat_id, check=True):
+                queue.add(chat_id, next_track)
+                logger.info(f"Autoplay preload: Queued '{next_track.title}' for chat {chat_id}")
+            else:
+                # If call ended or song already in queue, cleanup the downloaded file
+                if next_track.file_path and os.path.exists(next_track.file_path):
+                    try:
+                        os.remove(next_track.file_path)
+                        logger.info(f"Autoplay preload: Cleaned unused download: {next_track.file_path}")
+                    except:
+                        pass
         except asyncio.CancelledError:
             logger.info(f"Autoplay preload: Cancelled for chat {chat_id}")
+            # Cleanup if download was in progress
+            if next_track and next_track.file_path and os.path.exists(next_track.file_path):
+                try:
+                    os.remove(next_track.file_path)
+                    logger.info(f"Autoplay preload: Cleaned cancelled file: {next_track.file_path}")
+                except:
+                    pass
         except Exception as e:
             logger.warning(f"Autoplay preload error: {e}")
+            # Cleanup on error
+            if next_track and next_track.file_path and os.path.exists(next_track.file_path):
+                try:
+                    os.remove(next_track.file_path)
+                except:
+                    pass
         finally:
             # Remove from active tasks
             if chat_id in self._preload_tasks:
@@ -217,6 +253,23 @@ class TgCall(PyTgCalls):
             if not seek_time:
                 media.time = 1
                 await db.add_call(chat_id)
+                
+                # Track this song for building recommendation dataset
+                try:
+                    from datetime import datetime
+                    await db.db['played_songs'].insert_one({
+                        'video_id': media.id,
+                        'title': media.title,
+                        'channel': getattr(media, 'channel_name', 'Unknown'),
+                        'duration': getattr(media, 'duration', 'Unknown'),
+                        'url': getattr(media, 'url', ''),
+                        'played_at': datetime.now(),
+                        'chat_id': chat_id,
+                    })
+                except Exception as e:
+                    # Silent fail - don't break playback
+                    logger.debug(f"Failed to track song for recommendations: {e}")
+                
                 text = _lang["play_media"].format(
                     media.url,
                     media.title,
@@ -242,7 +295,8 @@ class TgCall(PyTgCalls):
                     )).id
                 
                 # Proactive autoplay preload - predict and download next song in background
-                if autoplay_status and media.req_type == "search" and not queue.get_next(chat_id, check=True):
+                # Now works with ALL song types (search, URL, playlist) for TF-IDF recommendations
+                if autoplay_status and not queue.get_next(chat_id, check=True):
                     task = asyncio.create_task(self._preload_next_song(chat_id, media))
                     self._preload_tasks[chat_id] = task
         except FileNotFoundError:
@@ -303,13 +357,13 @@ class TgCall(PyTgCalls):
             pass
 
         if not media:
-            # check for autoplay
-            if old_media and old_media.req_type == "search":
+            # Check for autoplay - now works with ALL song types (search, URL, playlist)
+            if old_media:  # Removed req_type check - TF-IDF works with any song type
                 # Check if autoplay enabled
                 mode = await db.get_autoplay(chat_id)
                 new_track = None
                 if mode:
-                    # Autoplay logic with smart mode
+                    # Autoplay logic with TF-IDF smart mode
                     new_track = await yt.smart_autoplay(mode, previous_track=old_media)
                 if new_track:
                     # Add to queue
