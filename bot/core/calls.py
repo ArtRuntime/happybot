@@ -275,6 +275,19 @@ class TgCall(PyTgCalls):
             await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             return await self.play_next(chat_id)
 
+        # Build ffmpeg parameters
+        ffmpeg_params = f"-ss {seek_time}" if seek_time > 1 else None
+        
+        # Add headers for anime streams to bypass 403 Forbidden
+        if getattr(media, 'req_type', None) == 'anime' and media.file_path.startswith("http"):
+            headers = (
+                "Referer: https://hianime.to\r\n"
+                "Origin: https://hianime.to\r\n"
+                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            )
+            header_param = f'-headers "{headers}"'
+            ffmpeg_params = f"{header_param} {ffmpeg_params}" if ffmpeg_params else header_param
+        
         stream = types.MediaStream(
             media_path=media.file_path,
             audio_parameters=types.AudioQuality.HIGH,
@@ -285,7 +298,7 @@ class TgCall(PyTgCalls):
                 if media.video
                 else types.MediaStream.Flags.IGNORE
             ),
-            ffmpeg_parameters=f"-ss {seek_time}" if seek_time > 1 else None,
+            ffmpeg_parameters=ffmpeg_params,
         )
         try:
             await client.play(
@@ -359,13 +372,33 @@ class TgCall(PyTgCalls):
                 try:
                     await message.edit_text("📥 Stream failed, downloading...")
                     logger.warning(f"Stream failed for {media.title}, falling back to download")
-                    new_path = await yt.download(media.id, video=media.video)
+                    
+                    # For anime, download from the stream URL directly
+                    if getattr(media, 'req_type', None) == 'anime':
+                        logger.info(f"Downloading anime from URL: {media.file_path}")
+                        new_path = await yt.download(media.file_path, video=media.video)
+                    else:
+                        new_path = await yt.download(media.id, video=media.video)
+                    
                     if new_path:
                         media.file_path = new_path
                         # Recursive retry with downloaded file
                         return await self.play_media(chat_id, message, media, seek_time)
                 except Exception as e:
                     logger.error(f"Fallback download failed: {e}")
+                    
+                    # Show specific error for anime 403 Forbidden
+                    if getattr(media, 'req_type', None) == 'anime' and '403' in str(e):
+                        await message.edit_text(
+                            "❌ **Anime Stream Blocked (403 Forbidden)**\n\n"
+                            "The anime streaming server is blocked or requires authentication.\n"
+                            "This usually means the CDN has geo-restrictions or the URL has expired.\n\n"
+                            "**Try:**\n"
+                            "• Selecting a different server using 🌐 Server button\n"
+                            "• Trying another anime\n"
+                            "• Using a VPN if available"
+                        )
+                        return  # Don't play next
 
             await message.edit_text(_lang["error_no_audio"])
             await self.play_next(chat_id)

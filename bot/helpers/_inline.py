@@ -197,7 +197,7 @@ class Inline:
 
     def anime_episode_selector(
         self, 
-        anime_id: str, 
+        chat_id: int,
         episodes: list, 
         current_page: int = 0
     ) -> types.InlineKeyboardMarkup:
@@ -207,15 +207,18 @@ class Inline:
         start = current_page * episodes_per_page
         end = min(start + episodes_per_page, len(episodes))
         
-        # Episode buttons (2 per row)
+        # Episode buttons
         ep_buttons = []
         for ep in episodes[start:end]:
             ep_no = ep.get("episode_no", "?")
-            ep_id = ep.get("id", "")
-            data_id = ep.get("data_id", "")
-            ep_buttons.append(
-                self.ikb(text=f"Ep {ep_no}", callback_data=f"anime_ep {anime_id} {data_id}")
-            )
+            ep_id_str = ep.get("id", "")
+            
+            # Extract episode ID from 'id' field (format: "anime-name?ep=12345")
+            if "?ep=" in ep_id_str:
+                ep_id = ep_id_str.split("?ep=")[1]
+                ep_buttons.append(
+                    self.ikb(text=f"Ep {ep_no}", callback_data=f"anime_play {chat_id} {ep_id}")
+                )
         
         # Arrange episode buttons in rows of 5
         for i in range(0, len(ep_buttons), 5):
@@ -224,15 +227,14 @@ class Inline:
         # Pagination
         nav_row = []
         if current_page > 0:
-            nav_row.append(self.ikb(text="◀️ Prev", callback_data=f"anime_ep_page {anime_id} {current_page-1}"))
+            nav_row.append(self.ikb(text="◀️ Prev", callback_data=f"anime_epg {chat_id} {current_page-1}"))
         if end < len(episodes):
-            nav_row.append(self.ikb(text="Next ▶️", callback_data=f"anime_ep_page {anime_id} {current_page+1}"))
+            nav_row.append(self.ikb(text="Next ▶️", callback_data=f"anime_epg {chat_id} {current_page+1}"))
         
         if nav_row:
             buttons.append(nav_row)
         
         buttons.append([
-            self.ikb(text="🔙 Back", callback_data=f"anime_select {anime_id}"),
             self.ikb(text="❌ Close", callback_data="anime_close")
         ])
         
@@ -241,10 +243,6 @@ class Inline:
     def anime_controls(
         self,
         chat_id: int,
-        anime_id: str,
-        episode_id: str,
-        server: str = "hd-1",
-        stream_type: str = "sub",
         status: str = None
     ) -> types.InlineKeyboardMarkup:
         """Display anime playback controls with episode/server/type selectors."""
@@ -264,19 +262,17 @@ class Inline:
             self.ikb(text="▢", callback_data=f"anime_stop {chat_id}"),
         ])
         
-        # Episode/Server/Type selectors
+        # Server/Type selectors (opens menu to change)
         keyboard.append([
-            self.ikb(text="📺 Episodes", callback_data=f"anime_ep_list {anime_id}"),
-            self.ikb(text=f"🌐 {server.upper()}", callback_data=f"anime_server {anime_id} {episode_id}"),
-            self.ikb(text=f"🗣 {stream_type.upper()}", callback_data=f"anime_type {anime_id} {episode_id} {server}")
+            self.ikb(text="🌐 Server", callback_data=f"anime_srv {chat_id}"),
+            self.ikb(text="🗣 Sub/Dub", callback_data=f"anime_tg {chat_id}"),
         ])
         
         return self.ikm(keyboard)
 
     def anime_server_selector(
         self,
-        anime_id: str,
-        episode_id: str,
+        chat_id: int,
         servers: list,
         current_type: str = "sub"
     ) -> types.InlineKeyboardMarkup:
@@ -295,12 +291,11 @@ class Inline:
             buttons.append([
                 self.ikb(
                     text=f"🌐 {server_name}",
-                    callback_data=f"anime_use_server {anime_id} {episode_id} {server_name} {current_type}"
+                    callback_data=f"anime_use_srv {chat_id} {server_name} {current_type}"
                 )
             ])
         
         buttons.append([
-            self.ikb(text="🔙 Back", callback_data=f"anime_ep {anime_id} {episode_id}"),
             self.ikb(text="❌ Close", callback_data="anime_close")
         ])
         

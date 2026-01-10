@@ -3,6 +3,8 @@
 # This file is part of happybot
 
 
+import asyncio
+
 from pyrogram import filters, types
 from pyrogram.types import InputMediaPhoto
 
@@ -44,6 +46,35 @@ async def anime_callbacks(_, query: types.CallbackQuery):
                 await handle_anime_select(query, anime_id)
             else:
                 await query.answer("❌ Session expired, search again", show_alert=True)
+            return
+        
+        # Episode page navigation
+        if data.startswith("anime_epg "):
+            parts = data.split()
+            epg_chat_id, page = int(parts[1]), int(parts[2])
+            cache = get_cache(epg_chat_id)
+            anime_id = cache.get("current_anime_id")
+            if anime_id:
+                await show_episode_list(query, anime_id, page)
+            else:
+                await query.answer("❌ Session expired", show_alert=True)
+            return
+        
+        # Episode selected to play
+        if data.startswith("anime_play "):
+            parts = data.split()
+            if len(parts) < 3:
+                logger.error(f"Invalid anime_play callback: {data}")
+                await query.answer("❌ Invalid episode data", show_alert=True)
+                return
+            
+            play_chat_id, ep_id = int(parts[1]), parts[2]
+            cache = get_cache(play_chat_id)
+            anime_id = cache.get("current_anime_id")
+            if anime_id:
+                await start_anime_stream(query, anime_id, ep_id, "hd-1", "sub")
+            else:
+                await query.answer("❌ Session expired", show_alert=True)
             return
         
         # Episode list requested
@@ -109,6 +140,50 @@ async def anime_callbacks(_, query: types.CallbackQuery):
                 await query.message.delete()
             except:
                 pass
+        
+        # Server selector button
+        elif data.startswith("anime_srv "):
+            chat_id = int(data.split()[1])
+            cache = get_cache(chat_id)
+            anime_id = cache.get("current_anime_id")
+            ep_id = cache.get("current_episode_id")
+            stream_type = cache.get("current_stream_type", "sub")
+            
+            if anime_id and ep_id:
+                await show_server_selector(query, anime_id, ep_id, stream_type)
+            else:
+                await query.answer("❌ Session expired", show_alert=True)
+        
+        # Sub/Dub toggle button
+        elif data.startswith("anime_tg "):
+            chat_id = int(data.split()[1])
+            cache = get_cache(chat_id)
+            anime_id = cache.get("current_anime_id")
+            ep_id = cache.get("current_episode_id")
+            current_server = cache.get("current_server", "hd-1")
+            current_type = cache.get("current_stream_type", "sub")
+            
+            if anime_id and ep_id:
+                new_type = "dub" if current_type == "sub" else "sub"
+                await start_anime_stream(query, anime_id, ep_id, current_server, new_type)
+            else:
+                await query.answer("❌ Session expired", show_alert=True)
+        
+        # Server selected from menu
+        elif data.startswith("anime_use_srv "):
+            parts = data.split()
+            if len(parts) >= 4:
+                chat_id, server_name, stream_type = int(parts[1]), parts[2], parts[3]
+                cache = get_cache(chat_id)
+                anime_id = cache.get("current_anime_id")
+                ep_id = cache.get("current_episode_id")
+                
+                if anime_id and ep_id:
+                    await start_anime_stream(query, anime_id, ep_id, server_name, stream_type)
+                else:
+                    await query.answer("❌ Session expired", show_alert=True)
+            else:
+                await query.answer("❌ Invalid data", show_alert=True)
     
     except Exception as e:
         logger.error(f"Anime callback error: {e}", exc_info=True)
@@ -142,8 +217,43 @@ async def handle_anime_select(query: types.CallbackQuery, anime_id: str):
             cache["episodes"][anime_id] = episodes
             total_eps = episodes_data.get("totalEpisodes", len(episodes))
         else:
+            episodes = []
             total_eps = "?"
         
+        # Store current anime_id for this chat
+        cache["current_anime_id"] = anime_id
+        
+        # Debug logging
+        logger.info(f"Episodes count: {len(episodes)}")
+        if len(episodes) > 0:
+            logger.info(f"First episode: {episodes[0]}")
+        
+        # If it's a movie (1 episode), auto-play
+        if len(episodes) == 1:
+            # Extract episode ID from 'id' field (format: "anime-name?ep=12345")
+            ep_id_str = episodes[0].get("id", "")
+            if "?ep=" in ep_id_str:
+                ep_id = ep_id_str.split("?ep=")[1]
+                logger.info(f"Auto-playing movie with ep_id: {ep_id}")
+                try:
+                    await query.message.edit_caption(
+                        f"📺 **{title}**\n🎬 Starting playback...",
+                        reply_markup=None
+                    )
+                except:
+                    try:
+                        await query.message.edit_text(
+                            f"📺 **{title}**\n🎬 Starting playback..."
+                        )
+                    except:
+                        pass
+                
+                await start_anime_stream(query, anime_id, ep_id, "hd-1", "sub")
+                return
+            else:
+                logger.warning(f"Could not extract ep_id from: {ep_id_str}")
+        
+        # Show episode selector for series
         caption = (
             f"📺 **{title}**\n"
             f"🇯🇵 {japanese_title}\n"
@@ -152,7 +262,7 @@ async def handle_anime_select(query: types.CallbackQuery, anime_id: str):
             f"📝 {overview[:200]}{'...' if len(overview) > 200 else ''}"
         )
         
-        keyboard = buttons.anime_episode_selector(anime_id, episodes, 0)
+        keyboard = buttons.anime_episode_selector(chat_id, episodes, 0)
         
         if poster:
             try:
@@ -188,7 +298,7 @@ async def show_episode_list(query: types.CallbackQuery, anime_id: str, page: int
     if not episodes:
         return await query.answer("❌ No episodes found", show_alert=True)
     
-    keyboard = buttons.anime_episode_selector(anime_id, episodes, page)
+    keyboard = buttons.anime_episode_selector(chat_id, episodes, page)
     
     try:
         await query.message.edit_reply_markup(reply_markup=keyboard)
@@ -214,7 +324,7 @@ async def show_server_selector(query: types.CallbackQuery, anime_id: str, ep_id:
         if not servers:
             return await query.answer("❌ No servers found", show_alert=True)
         
-        keyboard = buttons.anime_server_selector(anime_id, ep_id, servers, stream_type)
+        keyboard = buttons.anime_server_selector(query.message.chat.id, servers, stream_type)
         
         await query.message.edit_reply_markup(reply_markup=keyboard)
     
@@ -241,16 +351,43 @@ async def start_anime_stream(
         if not stream_data:
             return await query.answer("❌ Failed to get stream", show_alert=True)
         
-        streaming_links = stream_data.get("streamingLink", [])
+        streaming_links = stream_data.get("streamingLink", {})
+        logger.debug(f"Full stream_data: {stream_data}")
+        logger.debug(f"streaming_links: {streaming_links}")
+        
         if not streaming_links:
             return await query.answer("❌ No streaming link available", show_alert=True)
         
-        # Get the m3u8/mp4 link
-        link_data = streaming_links[0].get("link", {})
-        stream_url = link_data.get("file")
+        # Extract stream URL: streamingLink.link.file
+        stream_url = None
+        if isinstance(streaming_links, dict):
+            link_obj = streaming_links.get("link", {})
+            if isinstance(link_obj, dict):
+                stream_url = link_obj.get("file")
         
         if not stream_url:
-            return await query.answer("❌ Invalid stream URL", show_alert=True)
+            logger.error(f"Could not extract stream URL. streamingLink: {streaming_links}")
+            return await query.answer("❌ Invalid stream format", show_alert=True)
+        
+        logger.info(f"Original stream URL: {stream_url[:100]}")
+        
+        # Extract actual playable URL using yt-dlp (handles m3u8/HLS)
+        try:
+            from yt_dlp import YoutubeDL
+            ydl_opts = {
+                'format': 'best',
+                'quiet': True,
+                'no_warnings': True,
+            }
+            
+            with YoutubeDL(ydl_opts) as ydl:
+                yt_info = ydl.extract_info(stream_url, download=False)
+                if yt_info and 'url' in yt_info:
+                    playable_url = yt_info['url']
+                    logger.info(f"Extracted playable URL: {playable_url[:100]}")
+                    stream_url = playable_url
+        except Exception as e:
+            logger.warning(f"yt-dlp extraction failed: {e}, using original URL")
         
         # Get anime and episode info
         info = await anime.get_anime_info(anime_id)
@@ -269,52 +406,56 @@ async def start_anime_stream(
         
         # Create track object
         track = Track(
+            id=ep_id,
+            channel_name=title,
+            duration="Unknown",
+            duration_sec=0,
             title=f"{title} - {ep_title}",
-            link=stream_url,
-            thumb=poster if poster else await thumb.gen_thumb(),
-            dur=0,  # Duration unknown for anime
-            req_by=query.from_user.id,
-            video=True  # Anime is video
+            url=stream_url,
+            file_path=stream_url,  # Set stream URL as file path
+            thumbnail=poster if poster else await thumb.gen_thumb(),
+            user=query.from_user.mention,
+            video=True,
+            req_type="anime"
         )
         
-        # Add to queue and play
+        # Create media object from track
         media = Media(
-            chat_id=chat_id,
+            id=track.id,
+            duration=track.duration,
+            duration_sec=track.duration_sec,
+            file_path=stream_url,  # Direct stream URL
             message_id=query.message.id,
-            track=track
+            title=track.title,
+            url=track.url,
+            user=track.user,
+            video=track.video,
+            req_type=track.req_type
         )
         
-        await queue.add(chat_id, track)
+        queue.add(chat_id, track)
         
         if await db.get_call(chat_id):
             # Already playing something, this will queue
             await query.answer("✅ Added to queue", show_alert=False)
         else:
             # Start playback
-            await anon.start_stream(chat_id, media)
+            await anon.play_media(chat_id, query.message, media)
             
-            # Update message with playback controls
-            keyboard = buttons.anime_controls(
-                chat_id,
-                anime_id,
-                ep_id,
-                server,
-                stream_type
-            )
+            # Store current playback state
+            cache["current_episode_id"] = ep_id
+            cache["current_server"] = server
+            cache["current_stream_type"] = stream_type
             
-            caption = (
-                f"▶️ **Now Streaming**\n\n"
-                f"📺 {title}\n"
-                f"🎬 {ep_title}\n"
-                f"🌐 Server: {server.upper()}\n"
-                f"🗣 Type: {stream_type.upper()}\n"
-                f"👤 Requested by: {query.from_user.mention}"
-            )
+            # Update keyboard with anime controls (preserve thumbnail from play_media)
+            # Wait a bit for play_media to update the message first
+            await asyncio.sleep(0.5)
+            keyboard = buttons.anime_controls(chat_id)
             
             try:
-                await query.message.edit_caption(caption, reply_markup=keyboard)
-            except:
-                await query.message.edit_text(caption, reply_markup=keyboard)
+                await query.message.edit_reply_markup(reply_markup=keyboard)
+            except Exception as e:
+                logger.debug(f"Could not update anime controls: {e}")
     
     except Exception as e:
         logger.error(f"Failed to start anime stream: {e}", exc_info=True)

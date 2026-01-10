@@ -296,6 +296,19 @@ class YouTube:
                 }
             },
         }
+        
+        # Add headers for anime streams to bypass 403 Forbidden
+        # Check for common anime CDN domains or any stream URL with master.m3u8
+        is_anime_stream = (
+            "rainveil" in url or "stormshade" in url or "haildrop" in url or 
+            "anime" in url.lower() or "master.m3u8" in url or "/m3u8" in url
+        )
+        if is_anime_stream:
+            base_opts["http_headers"] = {
+                "Referer": "https://hianime.to/",
+                "Origin": "https://hianime.to",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
 
         if video:
             ydl_opts = {
