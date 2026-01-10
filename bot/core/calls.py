@@ -315,6 +315,19 @@ class TgCall(PyTgCalls):
             await self.stop(chat_id)
             await message.edit_text(_lang["error_no_call"])
         except exceptions.NoAudioSourceFound:
+            # Fallback to download if streaming failed
+            if media.file_path and media.file_path.startswith("http"):
+                try:
+                    await message.edit_text("📥 Stream failed, downloading...")
+                    logger.warning(f"Stream failed for {media.title}, falling back to download")
+                    new_path = await yt.download(media.id, video=media.video)
+                    if new_path:
+                        media.file_path = new_path
+                        # Recursive retry with downloaded file
+                        return await self.play_media(chat_id, message, media, seek_time)
+                except Exception as e:
+                    logger.error(f"Fallback download failed: {e}")
+
             await message.edit_text(_lang["error_no_audio"])
             await self.play_next(chat_id)
         except (ConnectionNotFound, TelegramServerError):
@@ -395,10 +408,16 @@ class TgCall(PyTgCalls):
                 return await self.stop(chat_id)
 
         _lang = await lang.get_lang(chat_id)
-        msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
+        
+        # Show appropriate message based on streaming/downloading
+        from bot import config
+        if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
+            msg = await app.send_message(chat_id=chat_id, text="⏭️ Loading next track...")
+        else:
+            msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
+        
         # Download or get stream URL
         if media.req_type != "telegram":
-            from bot import config
             if config.ENABLE_DIRECT_STREAMING and not media.url.startswith("t.me"):
                 # Direct streaming for YouTube/external URLs
                 logger.info(f"🎵 Using direct streaming for: {media.title}")

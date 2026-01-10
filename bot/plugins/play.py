@@ -121,7 +121,7 @@ async def play_hndlr(
             # Use direct streaming or download based on config
             if config.ENABLE_DIRECT_STREAMING and file.req_type != "telegram" and not file.url.startswith("t.me"):
                 # Direct streaming for YouTube/external URLs
-                await sent.edit_text(m.lang["play_downloading"])  # Keep same message
+                await sent.edit_text("🔎 Loading Stream...")
                 try:
                     file.file_path = await yt.get_stream_url(file.id, video=video)
                     if not file.file_path:

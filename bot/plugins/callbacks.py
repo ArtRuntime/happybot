@@ -92,10 +92,16 @@ async def _controls(_, query: types.CallbackQuery):
         except:
             pass
 
-        msg = await app.send_message(chat_id=chat_id, text=query.lang["play_next"])
+        # Show appropriate message
+        from bot import config
+        if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
+            msg_text = "⏭️ Loading next track..."
+        else:
+            msg_text = query.lang["play_next"]
+
+        msg = await app.send_message(chat_id=chat_id, text=msg_text)
         if not media.file_path:
             # Use streaming if enabled
-            from bot import config
             if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
                 media.file_path = await yt.get_stream_url(media.id, video=media.video)
                 if not media.file_path:
