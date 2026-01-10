@@ -105,6 +105,12 @@ async def play_hndlr(
                     m.chat.id, file.id, m.lang["play_now"]
                 ),
             )
+            
+            # Pre-calculate stream/download if this is the next song
+            if position == 0:
+                import asyncio
+                asyncio.create_task(anon.prepare_track(m.chat.id, file))
+            
             if tracks:
                 added = playlist_to_queue(m.chat.id, tracks)
                 await app.send_message(

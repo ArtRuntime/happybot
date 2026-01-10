@@ -162,17 +162,21 @@ class TgCall(PyTgCalls):
                 return
             
             # Re-check autoplay status before adding to queue
-            mode = await db.get_autoplay(chat_id)
-            if not mode:
-                # Autoplay was disabled, cleanup downloaded file
+            # Check if cancelled after download (cleanup if needed)
+            if chat_id in self._preload_cancelled:
+                self._preload_cancelled.discard(chat_id)
                 if next_track.file_path and os.path.exists(next_track.file_path):
                     try:
                         os.remove(next_track.file_path)
-                        logger.info(f"Autoplay preload: Cleaned - autoplay disabled: {next_track.file_path}")
                     except:
                         pass
                 return
             
+            # Check for failed extraction
+            if not next_track.file_path:
+               logger.warning(f"Autoplay preload: Failed to get stream/file for {next_track.title}")
+               return
+
             # CRITICAL: Re-check if call is still active before adding to queue
             # This prevents adding songs after user pressed stop
             if not await db.get_call(chat_id):
@@ -217,6 +221,36 @@ class TgCall(PyTgCalls):
             # Remove from active tasks
             if chat_id in self._preload_tasks:
                 del self._preload_tasks[chat_id]
+
+    async def prepare_track(self, chat_id: int, track: Track) -> None:
+        """
+        Background task to prepare (stream/download) a track 
+        so it's ready for instant playback.
+        """
+        if track.file_path:
+            return  # Already ready
+
+        logger.info(f"🔄 Preparing track in background: {track.title}")
+        
+        from bot import config
+        
+        try:
+            # 1. Try Direct Streaming (if enabled)
+            if config.ENABLE_DIRECT_STREAMING and track.req_type != "telegram" and not track.url.startswith("t.me"):
+                track.file_path = await yt.get_stream_url(track.id, video=track.video)
+                if track.file_path:
+                    logger.info(f"✅ Track prepared (Stream): {track.title}")
+                    return
+
+            # 2. Fallback to Download (if stream failed or disabled)
+            logger.info(f"⬇️ Preparing track (Download): {track.title}")
+            track.file_path = await yt.download(track.id, video=track.video)
+            
+            if track.file_path:
+                 logger.info(f"✅ Track prepared (Downloaded): {track.file_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to prepare track {track.title}: {e}")
 
     async def play_media(
         self,
