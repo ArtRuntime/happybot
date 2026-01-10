@@ -150,10 +150,9 @@ class YouTube:
         if hasattr(self, 'regex') and not self.regex.match(query) and query.startswith("http"):
              return await self._generic_search(query, m_id, video)
             
-        _search = VideosSearch(query, limit=1, with_live=False)
-        
         # Wrap the API call with temporary proxy env vars
         with proxy_env():
+             _search = VideosSearch(query, limit=1, with_live=False)
              results = await _search.next()
              
         if results and results["result"]:
@@ -570,8 +569,8 @@ class YouTube:
         
         # 3. Search with retry logic
         for attempt in range(3):
-            _search = VideosSearch(keyword, limit=20, with_live=False)
             with proxy_env():
+                _search = VideosSearch(keyword, limit=20, with_live=False)
                 results = await _search.next()
                 
             filtered = []
@@ -606,9 +605,9 @@ class YouTube:
         # Search for the same title but get a few results
         # We'll pick the 2nd result to pretend it's "next"
         # Ideally we'd use related videos but this is a decent heuristic for now
-        _search = VideosSearch(query, limit=5, with_live=False)
         
         with proxy_env():
+             _search = VideosSearch(query, limit=5, with_live=False)
              results = await _search.next()
              
              

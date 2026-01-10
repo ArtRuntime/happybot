@@ -7,6 +7,7 @@ from py_yt import VideosSearch
 from pyrogram import types
 
 from bot import app
+from bot.core.youtube import proxy_env
 from bot.helpers import buttons
 
 
@@ -17,8 +18,9 @@ async def inline_query_handler(_, query: types.InlineQuery):
         return
 
     try:
-        search = VideosSearch(text, limit=15)
-        results = (await search.next()).get("result", [])
+        with proxy_env():
+            search = VideosSearch(text, limit=15)
+            results = (await search.next()).get("result", [])
 
         answers = []
         for video in results:
