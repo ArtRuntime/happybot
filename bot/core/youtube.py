@@ -441,57 +441,71 @@ class YouTube:
         
         return genre, artist, language
 
-    def _generate_dynamic_keyword(self, genre: str | None, artist: str | None, language: str | None = None, previous_title: str = None) -> str:
-        """Generate a dynamic search keyword based on detected genre/artist/language."""
+    def _generate_dynamic_keyword(self, genre: str | None, artist: str | None, language: str | None = None, previous_title: str = None, attempt: int = 0) -> str:
+        """Generate a dynamic search keyword based on detected genre/artist/language.
+        
+        Strategy (in priority order):
+        1. Use previous track title keywords (most relevant)
+        2. Use detected artist (if confident)
+        3. Use detected genre with language
+        4. Random fallback (last resort)
+        """
         import random
         
-        # Language-specific prefixes
+        # Language-specific prefix - only add if confident and not English
         lang_prefix = ""
-        if language and language != "english":
+        if language and language not in ("english", None):
             lang_prefix = f"{language} "
         
-        if artist and len(artist) > 2:
-            # Artist-based queries for variety
-            artist_queries = [
-                f"songs like {artist}",
-                f"{artist} type songs",
-                f"{lang_prefix}{artist} best songs",
-                f"{artist} similar artists",
-            ]
-            return random.choice(artist_queries)
-        
-        if genre and genre in self.GENRE_KEYWORDS:
-            # Use genre keywords but add variety
-            base_keywords = self.GENRE_KEYWORDS[genre]
-            suffix = random.choice(self.KEYWORD_SUFFIXES)
+        # STRATEGY 1: Previous title keywords (PRIMARY - most contextual)
+        # On first attempt, always try to extract from previous title
+        if previous_title and attempt == 0:
+            # Clean the title - remove common suffixes and symbols
+            clean_title = previous_title.lower()
+            for remove in ["official", "video", "audio", "lyrics", "hd", "4k", "mv", "m/v", "()", "[]", "||"]:
+                clean_title = clean_title.replace(remove, "")
             
-            # 50% chance to use predefined, 50% to generate dynamic with language
-            if random.random() > 0.5:
-                return random.choice(base_keywords)
-            else:
-                return f"{lang_prefix}{genre} {suffix}"
+            # Extract meaningful words
+            words = clean_title.split()
+            skip = {"the", "a", "an", "of", "to", "in", "for", "on", "with", "by", "-", "|", "&", "ft", "feat", "x"}
+            keywords = [w.strip("()[]|-") for w in words if w not in skip and len(w) > 2][:4]
+            
+            if len(keywords) >= 2:
+                return " ".join(keywords) + " songs similar"
+            elif keywords:
+                return keywords[0] + " music"
         
-        # Language-based fallback if no genre
+        # STRATEGY 2: Artist-based search (only if artist looks like a real name)
+        if artist and len(artist) > 3 and attempt <= 1:
+            # Avoid generic channel names
+            generic_names = {"vevo", "official", "music", "records", "entertainment", "topic", "channel"}
+            if not any(g in artist.lower() for g in generic_names):
+                # Use consistent queries, not random
+                if attempt == 0:
+                    return f"{artist} songs"
+                else:
+                    return f"songs like {artist}"
+        
+        # STRATEGY 3: Genre + Language based
+        if genre and genre in self.GENRE_KEYWORDS:
+            keywords = self.GENRE_KEYWORDS[genre]
+            # Rotate through keywords based on attempt, not random
+            idx = attempt % len(keywords)
+            return f"{lang_prefix}{keywords[idx]}"
+        
+        # STRATEGY 4: Language-only fallback
         if language and language != "english":
-            lang_queries = [
-                f"{language} songs 2024",
-                f"best {language} songs",
-                f"{language} music playlist",
-                f"new {language} songs",
-            ]
-            return random.choice(lang_queries)
+            queries = [f"{language} songs", f"best {language} music", f"popular {language} songs"]
+            return queries[attempt % len(queries)]
         
-        # Fallback: use previous title keywords if available
-        if previous_title:
-            # Extract first few words, skip common words
-            words = previous_title.lower().split()[:3]
-            skip = {"the", "a", "an", "of", "to", "in", "for", "on", "with", "by", "-", "|", "official", "video", "audio", "lyrics"}
-            keywords = [w for w in words if w not in skip and len(w) > 2]
-            if keywords:
-                return f"{lang_prefix}" + " ".join(keywords) + " songs"
-        
-        # Ultimate fallback
-        return random.choice(self.GENRE_KEYWORDS["random"])
+        # STRATEGY 5: Ultimate fallback - use more generic but popular music queries
+        fallback_queries = [
+            "popular songs",
+            "top music 2024", 
+            "best songs",
+            "trending music"
+        ]
+        return fallback_queries[attempt % len(fallback_queries)]
 
     def _is_similar_title(self, title1: str, title2: str) -> bool:
         """Check if two titles are too similar (potential duplicate)."""
@@ -545,32 +559,43 @@ class YouTube:
 
     async def smart_autoplay(self, mode: str | bool, previous_track: Track = None) -> Track | None:
         """
-        Smart Autoplay Logic with dynamic keyword generation.
+        Smart Autoplay Logic - prioritizes continuity with previous track.
+        
+        Strategy:
+        1. First tries to find songs similar to the PREVIOUS TRACK TITLE
+        2. Falls back to artist-based search
+        3. Then genre-based search
+        4. Only uses random genres as last resort
+        
         mode: 'on' (or True), 'smart', or specific genre 'pop', 'rock', etc.
         """
         if mode == True or mode == "on":
-             mode = "smart"
+            mode = "smart"
              
         genre = None
         artist = None
         language = None
         previous_title = previous_track.title if previous_track else None
         
-        # 1. Determine Genre/Artist/Language from previous track
+        # 1. Determine Genre/Artist/Language from previous track (for fallback)
         if mode == "smart" and previous_track:
             genre, artist, language = self._detect_genre(previous_track)
             logger.info(f"Smart Autoplay: Detected genre={genre}, artist={artist}, language={language}")
         elif mode in self.GENRE_KEYWORDS:
+            # User explicitly requested a genre
             genre = mode
+            # Don't use previous track info for explicit genre mode
+            previous_title = None
+            artist = None
         
-        # 2. Generate dynamic keyword
-        keyword = self._generate_dynamic_keyword(genre, artist, language, previous_title)
-        logger.info(f"Smart Autoplay: Searching '{keyword}' (Genre: {genre}, Artist: {artist}, Lang: {language})")
-        
-        # 3. Search with retry logic
+        # 2. Search with progressive fallback strategy
         for attempt in range(3):
+            # Generate keyword with attempt number for progressive fallback
+            keyword = self._generate_dynamic_keyword(genre, artist, language, previous_title, attempt)
+            logger.info(f"Smart Autoplay (attempt {attempt + 1}): Searching '{keyword}'")
+            
             with proxy_env():
-                _search = VideosSearch(keyword, limit=20, with_live=False)
+                _search = VideosSearch(keyword, limit=15, with_live=False)
                 results = await _search.next()
                 
             filtered = []
@@ -580,8 +605,13 @@ class YouTube:
                         filtered.append(res)
             
             if filtered:
+                # Pick from top 5 results (more relevant) instead of all
+                top_results = filtered[:5]
                 import random
-                data = random.choice(filtered)
+                data = random.choice(top_results)
+                
+                logger.info(f"Smart Autoplay: Selected '{data.get('title')}' from {len(filtered)} filtered results")
+                
                 return Track(
                     id=data.get("id"),
                     channel_name=data.get("channel", {}).get("name"),
@@ -595,9 +625,9 @@ class YouTube:
                     req_type="search"
                 )
             
-            # If no results passed filter, regenerate keyword and retry
-            keyword = self._generate_dynamic_keyword(genre, artist, language, previous_title)
+            logger.warning(f"Smart Autoplay: No results for '{keyword}', trying next strategy...")
 
+        logger.error("Smart Autoplay: All attempts failed, no track found")
         return None
 
     # Keep old method for backward compat or fallback
