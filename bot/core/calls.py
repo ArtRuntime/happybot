@@ -113,6 +113,9 @@ class TgCall(PyTgCalls):
                 logger.info(f"Autoplay preload: No prediction for chat {chat_id}")
                 return
             
+            # Mark as autoplay (don't use for recommendation training)
+            next_track.source = 'autoplay'
+            
             # Re-check autoplay status before downloading (might have been toggled off)
             mode = await db.get_autoplay(chat_id)
             if not mode:
@@ -308,6 +311,8 @@ class TgCall(PyTgCalls):
                         'url': getattr(media, 'url', ''),
                         'played_at': datetime.now(),
                         'chat_id': chat_id,
+                        'source': getattr(media, 'source', 'unknown'),  # user/autoplay
+                        'req_type': getattr(media, 'req_type', 'unknown'),  # search/youtube/telegram
                     })
                 except Exception as e:
                     # Silent fail - don't break playback

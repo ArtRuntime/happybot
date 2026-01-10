@@ -26,44 +26,9 @@ User plays a song
 
 ---
 
-## 🚀 Quick Setup
+## 🚀 Fully Automated Setup
 
-### Step 1: Let Bot Track Songs (Already Done!)
-
-Your bot is already tracking songs in MongoDB. Just use it normally for 1-2 weeks.
-
-**Target**: Get 50+ different songs played
-
----
-
-### Step 2: Build TF-IDF Dataset
-
-After collecting songs:
-
-```bash
-python build_tfidf_dataset.py
-```
-
-**What it does:**
-- Reads from `played_songs` collection
-- Creates `bot/data/recommendations_dataset.csv`
-- Uses songs YOUR users actually play!
-
-**Output:**
-```
-✅ Found 150 unique songs
-✅ Created dataset: bot/data/recommendations_dataset.csv
-   Size: 12.5 KB
-
-Top 10 Most Played:
-  1. Kesariya - Pritam (45 plays)
-  2. Apna Bana Le - Arijit Singh (38 plays)
-  ...
-```
-
----
-
-### Step 3: Enable TF-IDF
+### Step 1: Enable TF-IDF
 
 Edit `.env` file:
 
@@ -71,70 +36,26 @@ Edit `.env` file:
 ENABLE_TFIDF_RECOMMENDATIONS=true
 ```
 
----
-
-### Step 4: Restart Bot
+### Step 2: Restart Bot
 
 ```bash
 python -m bot
 ```
 
-**Done!** Now you have hybrid recommendations! 🎉
+### Step 3: Just Play Music! 🎵
+
+- **No manual scripts needed.**
+- Bot automatically learns from every song you play.
+- Dataset updates in real-time.
+- Model retrains every hour automatically.
 
 ---
 
 ## 📊 How It Performs
 
-### Scenario 1: Song in Dataset
-```
-Play: Kesariya - Pritam
-↓
-TF-IDF finds: Apna Bana Le, Tum Hi Ho, etc. (similar songs)
-↓
-Plays: Apna Bana Le ✅ (Perfect match!)
-```
-
-### Scenario 2: Song NOT in Dataset
-```
-Play: New Song X - Artist Y
-↓
-TF-IDF: Not found
-↓
-Falls back to: "Artist Y songs"
-↓
-Plays: Artist Y's song ✅ (Still relevant!)
-```
-
-### Scenario 3: Unknown Song
-```
-Play: Random Video
-↓
-TF-IDF: Not found
-Artist: Generic
-↓
-Falls back to: Genre/Language search
-↓
-Plays: Similar genre song ✅
-```
-
----
-
-## 🔄 Keep Dataset Fresh
-
-Run monthly to update with latest songs:
-
-```bash
-# Cron job (runs weekly)
-0 2 * * 0 cd /path/to/bot && python build_tfidf_dataset.py
-```
-
-Or manually:
-```bash
-python build_tfidf_dataset.py
-# No restart needed - dataset loads automatically!
-```
-
----
+✅ **Zero Maintenance** - System handles everything itself.
+✅ **Gets Smarter** - The more you use it, the better recommendations get.
+✅ **Real-Time** - New songs are available for recommendation within 1 hour.
 
 ## 💡 Why This is Perfect
 

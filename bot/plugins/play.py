@@ -87,6 +87,7 @@ async def play_hndlr(
         await utils.play_log(m, file.title, file.duration)
 
     file.user = mention
+    file.source = 'user'  # Mark as user-requested for recommendation training
     if force:
         queue.force_add(m.chat.id, file)
     else:

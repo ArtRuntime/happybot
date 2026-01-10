@@ -8,6 +8,7 @@ Provides intelligent song recommendations based on content similarity.
 """
 
 import os
+import time
 import pandas as pd
 from pathlib import Path
 from typing import List, Optional
@@ -47,6 +48,7 @@ class RecommendationEngine:
         self.cosine_sim = None
         self.indices = None
         self.initialized = False
+        self.last_trained_at = 0
         self.enabled = True
         self.data_source = None  # Will be 'mongodb' or 'csv'
         
@@ -63,40 +65,103 @@ class RecommendationEngine:
     
     async def _load_from_mongodb(self) -> bool:
         """
-        Load dataset from MongoDB (async).
+        Load and aggregate dataset from 'played_songs' collection (Auto-Training).
         
-        Returns:
-            bool: True if successful, False otherwise
+        This enables the bot to learn from listening history automatically.
         """
         try:
-            logger.info(f"Loading recommendations from MongoDB collection '{self.collection_name}'...")
+            logger.info(f"Auto-Training: Aggregating listening history from 'played_songs'...")
             
-            # Get collection
-            collection = self.mongo_db[self.collection_name]
+            # Use played_songs directly
+            collection = self.mongo_db['played_songs']
             
-            # Count documents (async operation)
-            count = await collection.count_documents({})
-            if count == 0:
-                logger.error(f"MongoDB collection '{self.collection_name}' is empty")
+            # Count documents
+            total_history = await collection.count_documents({})
+            if total_history < 10:
+                logger.warning(f"Not enough listening history ({total_history} songs). Play more songs!")
+                # Try fallback to static recommendations collection if history is low
+                fallback_coll = self.mongo_db['recommendations']
+                if await fallback_coll.count_documents({}) > 0:
+                     logger.info("Using static 'recommendations' collection as fallback.")
+                     collection = fallback_coll
+                     pipeline = [{'$project': {'_id': 0}}] # Just get all
+                else:
+                     return False
+            else:
+                # Aggregate unique songs from history with quality filters
+                # Filter 1: Only user-requested songs (exclude autoplay)
+                # Filter 2: Only songs played 5+ times (popular songs)
+                pipeline = [
+                    {
+                        '$match': {
+                            'source': 'user',  # Only user-requested songs
+                            'req_type': 'search'  # Only search queries (not links/files)
+                        }
+                    },
+                    {
+                        '$group': {
+                            '_id': '$video_id',
+                            'title': {'$first': '$title'},
+                            'channel_title': {'$first': '$channel'},
+                            'play_count': {'$sum': 1},
+                            'last_played': {'$max': '$played_at'}
+                        }
+                    },
+                    {
+                        '$match': {
+                            'play_count': {'$gte': 5}  # Only songs played 5+ times
+                        }
+                    },
+                    {'$sort': {'play_count': -1}},
+                    {'$limit': 2000}  # Keep dataset size manageable
+                ]
+
+            # Execute aggregation - await aggregate() first, then iterate cursor
+            cursor = await collection.aggregate(pipeline)
+            documents = [doc async for doc in cursor]
+            
+            if not documents:
                 return False
+
+            # Process documents for TF-IDF
+            processed_data = []
+            for doc in documents:
+                # If aggregation used (from played_songs)
+                if '_id' in doc: 
+                    video_id = doc['_id']
+                else:
+                    video_id = doc.get('video_id')
+                
+                title = doc.get('title', '')
+                channel = doc.get('channel_title', '')
+                
+                # Create text soup on the fly
+                text_soup = f"{title} {channel}".lower().strip()
+                
+                processed_data.append({
+                    'video_id': video_id,
+                    'title': title,
+                    'text_soup': text_soup,
+                    'play_count': doc.get('play_count', 1)
+                })
             
-            logger.info(f"Found {count} documents in collection")
+            self.df = pd.DataFrame(processed_data)
+            logger.info(f"✅ Auto-Trained on {len(self.df)} unique songs from history")
             
-            # Load all documents into DataFrame (async cursor)
-            cursor = collection.find({}, {
-                '_id': 0,  # Exclude MongoDB _id
-                'video_id': 1,
-                'title': 1,
-                'text_soup': 1,
-                'channel_title': 1,
-                'view_count': 1,
-                'published_year': 1,
-            })
+            # Save processed data to recommendations collection for persistence
+            if len(processed_data) > 0:
+                try:
+                    recommendations_coll = self.mongo_db['recommendations']
+                    # Clear old data and insert fresh
+                    await recommendations_coll.delete_many({})
+                    from datetime import datetime
+                    for item in processed_data:
+                        item['updated_at'] = datetime.now()
+                    await recommendations_coll.insert_many(processed_data)
+                    logger.info(f"💾 Saved {len(processed_data)} trained songs to 'recommendations' collection")
+                except Exception as save_err:
+                    logger.warning(f"Could not save to recommendations: {save_err}")
             
-            # Convert async cursor to list
-            documents = await cursor.to_list(length=None)
-            self.df = pd.DataFrame(documents)
-            logger.info(f"✅ Loaded {len(self.df)} videos from MongoDB")
             return True
             
         except Exception as e:
@@ -128,12 +193,20 @@ class RecommendationEngine:
     async def _lazy_init(self) -> bool:
         """
         Lazy initialization - loads dataset and builds TF-IDF matrix on first use (async).
+        Also handles auto-reloading every hour.
         
         Returns:
             bool: True if initialization successful, False otherwise
         """
         if self.initialized:
-            return True
+            # Check if reload needed (every 1 hour)
+            if time.time() - self.last_trained_at > 3600:
+                logger.info("⏰ Auto-Retraining Recommendation Engine from new history...")
+                self.initialized = False
+                self.indices = None
+                self.cosine_sim = None
+            else:
+                return True
         
         if not self.enabled:
             return False
@@ -223,6 +296,7 @@ class RecommendationEngine:
             # Create title-to-index mapping
             self.indices = pd.Series(self.df.index, index=self.df['title'].str.lower())
             
+            self.last_trained_at = time.time()
             self.initialized = True
             logger.info("✅ TF-IDF recommendation engine initialized successfully!")
             return True
