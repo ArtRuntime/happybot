@@ -444,11 +444,14 @@ class YouTube:
     def _generate_dynamic_keyword(self, genre: str | None, artist: str | None, language: str | None = None, previous_title: str = None, attempt: int = 0) -> str:
         """Generate a dynamic search keyword based on detected genre/artist/language.
         
-        Strategy (in priority order):
-        1. Use previous track title keywords (most relevant)
+        Strategy (in priority order - to avoid repetition):
+        1. Use detected genre with language (most variety)
         2. Use detected artist (if confident)
-        3. Use detected genre with language
+        3. Use language-only queries
         4. Random fallback (last resort)
+        
+        NOTE: We intentionally DON'T use previous song title to search,
+        as this causes the same songs to repeat.
         """
         import random
         
@@ -457,55 +460,39 @@ class YouTube:
         if language and language not in ("english", None):
             lang_prefix = f"{language} "
         
-        # STRATEGY 1: Previous title keywords (PRIMARY - most contextual)
-        # On first attempt, always try to extract from previous title
-        if previous_title and attempt == 0:
-            # Clean the title - remove common suffixes and symbols
-            clean_title = previous_title.lower()
-            for remove in ["official", "video", "audio", "lyrics", "hd", "4k", "mv", "m/v", "()", "[]", "||"]:
-                clean_title = clean_title.replace(remove, "")
-            
-            # Extract meaningful words
-            words = clean_title.split()
-            skip = {"the", "a", "an", "of", "to", "in", "for", "on", "with", "by", "-", "|", "&", "ft", "feat", "x"}
-            keywords = [w.strip("()[]|-") for w in words if w not in skip and len(w) > 2][:4]
-            
-            if len(keywords) >= 2:
-                return " ".join(keywords) + " songs similar"
-            elif keywords:
-                return keywords[0] + " music"
+        # STRATEGY 1: Genre + Language based (PRIMARY - most variety)
+        if genre and genre in self.GENRE_KEYWORDS:
+            keywords = self.GENRE_KEYWORDS[genre]
+            # Rotate through keywords based on attempt + add randomness
+            idx = (attempt + random.randint(0, 2)) % len(keywords)
+            return f"{lang_prefix}{keywords[idx]}"
         
         # STRATEGY 2: Artist-based search (only if artist looks like a real name)
         if artist and len(artist) > 3 and attempt <= 1:
             # Avoid generic channel names
             generic_names = {"vevo", "official", "music", "records", "entertainment", "topic", "channel"}
             if not any(g in artist.lower() for g in generic_names):
-                # Use consistent queries, not random
-                if attempt == 0:
-                    return f"{artist} songs"
-                else:
-                    return f"songs like {artist}"
+                artist_queries = [
+                    f"songs like {artist}",
+                    f"{artist} type beat",
+                    f"artists similar to {artist}",
+                ]
+                return artist_queries[attempt % len(artist_queries)]
         
-        # STRATEGY 3: Genre + Language based
-        if genre and genre in self.GENRE_KEYWORDS:
-            keywords = self.GENRE_KEYWORDS[genre]
-            # Rotate through keywords based on attempt, not random
-            idx = attempt % len(keywords)
-            return f"{lang_prefix}{keywords[idx]}"
-        
-        # STRATEGY 4: Language-only fallback
+        # STRATEGY 3: Language-only fallback
         if language and language != "english":
-            queries = [f"{language} songs", f"best {language} music", f"popular {language} songs"]
+            queries = [f"{language} songs 2024", f"best {language} music", f"popular {language} songs", f"new {language} hits"]
             return queries[attempt % len(queries)]
         
-        # STRATEGY 5: Ultimate fallback - use more generic but popular music queries
+        # STRATEGY 4: Ultimate fallback - use generic but popular music queries
         fallback_queries = [
-            "popular songs",
-            "top music 2024", 
-            "best songs",
-            "trending music"
+            "popular songs 2024",
+            "top music hits", 
+            "best songs playlist",
+            "trending music 2024",
+            "new songs official"
         ]
-        return fallback_queries[attempt % len(fallback_queries)]
+        return fallback_queries[(attempt + random.randint(0, 2)) % len(fallback_queries)]
 
     def _is_similar_title(self, title1: str, title2: str) -> bool:
         """Check if two titles are too similar (potential duplicate)."""
