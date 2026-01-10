@@ -52,6 +52,9 @@ class Config:
         # yt-dlp logging
         self.YTDLP_VERBOSE = getenv("YTDLP_VERBOSE", "false").lower() in ("true", "1", "yes")
         
+        # Anime API
+        self.ANIME_API_URL = getenv("ANIME_API_URL", "https://anime-api2-three.vercel.app")
+        
         # Proxy Configuration
         self.PROXY_HOST = getenv("PROXY_HOST", "127.0.0.1")
         self.PROXY_PORT = int(getenv("PROXY_PORT") or getenv("PROXY_HTTP_PORT") or 0)

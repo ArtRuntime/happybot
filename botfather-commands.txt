@@ -10,6 +10,7 @@ queue - Show the list of queued tracks
 seek - Seek forward
 seekback - Seek backward
 autoplay - Toggle smart autoplay mode
+anime - Search and stream anime
 addsession - Add a new assistant session (sudo only)
 rmsession - Remove an assistant session (sudo only)
 sessions - List all active assistants (sudo only)
