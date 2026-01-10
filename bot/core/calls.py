@@ -33,6 +33,9 @@ class TgCall(PyTgCalls):
     async def stop(self, chat_id: int) -> None:
         client = await db.get_assistant(chat_id)
         
+        # Cancel any active downloads for this chat
+        yt.cancel_downloads(chat_id)
+        
         # Cancel any active preload for this chat
         if chat_id in self._preload_tasks:
             self._preload_cancelled.add(chat_id)
@@ -109,6 +112,12 @@ class TgCall(PyTgCalls):
                 logger.info(f"Autoplay preload: No prediction for chat {chat_id}")
                 return
             
+            # Re-check autoplay status before downloading (might have been toggled off)
+            mode = await db.get_autoplay(chat_id)
+            if not mode:
+                logger.info(f"Autoplay preload: Cancelled - autoplay disabled for chat {chat_id}")
+                return
+            
             # Check if cancelled before downloading
             if chat_id in self._preload_cancelled:
                 self._preload_cancelled.discard(chat_id)
@@ -130,6 +139,18 @@ class TgCall(PyTgCalls):
             
             if not next_track.file_path:
                 logger.warning(f"Autoplay preload: Download failed for {next_track.title}")
+                return
+            
+            # Re-check autoplay status before adding to queue
+            mode = await db.get_autoplay(chat_id)
+            if not mode:
+                # Autoplay was disabled, cleanup downloaded file
+                if next_track.file_path and os.path.exists(next_track.file_path):
+                    try:
+                        os.remove(next_track.file_path)
+                        logger.info(f"Autoplay preload: Cleaned - autoplay disabled: {next_track.file_path}")
+                    except:
+                        pass
                 return
             
             # Add to queue (if still no next song and call is active)
@@ -190,6 +211,9 @@ class TgCall(PyTgCalls):
                 stream=stream,
                 config=types.GroupCallConfig(auto_start=False),
             )
+            # Force unpause and update DB status
+            await client.resume(chat_id)
+            await db.playing(chat_id, paused=False)
             if not seek_time:
                 media.time = 1
                 await db.add_call(chat_id)

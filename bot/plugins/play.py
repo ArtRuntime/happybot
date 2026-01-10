@@ -120,7 +120,10 @@ async def play_hndlr(
             file.file_path = fname
         else:
             await sent.edit_text(m.lang["play_downloading"])
-            file.file_path = await yt.download(file.id, video=video)
+            try:
+                file.file_path = await yt.download(file.id, video=video)
+            except yt.StorageLowError:
+                return await sent.edit_text(m.lang["error_low_storage"].format(config.SUPPORT_CHAT))
 
     await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
     if not tracks:

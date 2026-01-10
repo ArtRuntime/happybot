@@ -6,7 +6,6 @@
 from pyrogram import types
 
 from bot import app, config, lang
-from bot.core.lang import lang_codes
 
 
 class Inline:
@@ -65,7 +64,7 @@ class Inline:
                 ]
             ]
         else:
-            cbs = ["admins", "auth", "autoplay", "blist", "lang", "ping", "play", "queue", "stats", "sudo"]
+            cbs = ["admins", "auth", "autoplay", "blist", "ping", "play", "queue", "stats", "sudo"]
             buttons = [
                 self.ikb(text=cb.capitalize(), callback_data=f"help {cb}")
                 for cb in cbs

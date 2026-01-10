@@ -11,48 +11,26 @@ from pyrogram import errors
 
 from bot import db, logger
 
-lang_codes = {
-    "ar": "Arabic",
-    "de": "German",
-    "en": "English",
-    "es": "Spanish",
-    "fr": "French",
-    "hi": "Hindi",
-    "ja": "Japanese",
-    "my": "Burmese",
-    "pa": "Punjabi",
-    "pt": "Portuguese",
-    "ru": "Russian",
-    "zh": "Chinese",
-}
-
 
 class Language:
     """
-    Language class for managing multilingual support using JSON language files.
+    Language class - English only.
     """
 
     def __init__(self):
-        self.lang_codes = lang_codes
         self.lang_dir = Path("bot/locales")
-        self.languages = self.load_files()
+        self.english = self._load_english()
 
-    def load_files(self):
-        languages = {}
-        lang_files = {file.stem: file for file in self.lang_dir.glob("*.json")}
-        for lang_code, lang_file in lang_files.items():
-            with open(lang_file, "r", encoding="utf-8") as file:
-                languages[lang_code] = json.load(file)
-        logger.info(f"Loaded languages: {', '.join(languages.keys())}")
-        return languages
+    def _load_english(self):
+        lang_file = self.lang_dir / "en.json"
+        with open(lang_file, "r", encoding="utf-8") as file:
+            return json.load(file)
 
     async def get_lang(self, chat_id: int) -> dict:
-        lang_code = await db.get_lang(chat_id)
-        return self.languages[lang_code]
+        return self.english
 
     def get_languages(self) -> dict:
-        files = {f.stem for f in self.lang_dir.glob("*.json")}
-        return {code: self.lang_codes[code] for code in sorted(files)}
+        return {"en": "English"}
 
     def language(self):
         def decorator(func):
@@ -79,10 +57,7 @@ class Language:
                     logger.warning(f"Chat {chat.id} is blacklisted, leaving...")
                     return await chat.leave()
 
-                lang_code = await db.get_lang(chat.id)
-                lang_dict = self.languages[lang_code]
-
-                setattr(fallen, "lang", lang_dict)
+                setattr(fallen, "lang", self.english)
                 try:
                     return await func(*args, **kwargs)
                 except (errors.Forbidden, errors.exceptions.Forbidden):

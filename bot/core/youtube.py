@@ -18,6 +18,20 @@ from contextlib import contextmanager
 from bot import logger, config
 from bot.helpers import Track, utils
 
+
+class StorageLowError(Exception):
+    """Raised when there's not enough storage space for download."""
+    pass
+
+
+class DownloadCancelledError(Exception):
+    """Raised when download is cancelled by user."""
+    pass
+
+
+# Track cancelled downloads per chat_id
+_cancelled_downloads: set[int] = set()
+
 @contextmanager
 def proxy_env():
     """Context manager to temporarily set proxy env vars for libraries like py_yt that depend on them."""
@@ -75,6 +89,11 @@ class YouTube:
             r"(youtube\.com/(watch\?v=|shorts/|playlist\?list=)|youtu\.be/)"
             r"([A-Za-z0-9_-]{11}|PL[A-Za-z0-9_-]+)([&?][^\s]*)?"
         )
+
+    def cancel_downloads(self, chat_id: int):
+        """Mark all downloads for this chat as cancelled."""
+        _cancelled_downloads.add(chat_id)
+        logger.info(f"Marked downloads cancelled for chat {chat_id}")
 
     def get_cookies(self):
         if not self.checked:
@@ -274,6 +293,28 @@ class YouTube:
             # Use proxy_env to ensure HTTP proxy is set in environment for yt-dlp
             with proxy_env():
                 try:
+                    # Check available storage before downloading
+                    import shutil
+                    disk_usage = shutil.disk_usage("/")
+                    free_space = disk_usage.free
+                    
+                    # Get expected file size first and check if it fits
+                    with yt_dlp.YoutubeDL({"quiet": True, "geo_bypass": True, "nocheckcertificate": True}) as ydl_info:
+                        try:
+                            info = ydl_info.extract_info(url, download=False)
+                            filesize = info.get("filesize") or info.get("filesize_approx") or 0
+                            
+                            # Check if file size fits in available space
+                            if filesize > 0 and filesize > free_space:
+                                logger.warning(f"Not enough storage! File: {filesize // (1024*1024)} MB, Available: {free_space // (1024*1024)} MB")
+                                raise StorageLowError(f"File: {filesize // (1024*1024)} MB, Available: {free_space // (1024*1024)} MB")
+                            elif filesize > 0:
+                                logger.info(f"Storage OK. File: {filesize // (1024*1024)} MB, Available: {free_space // (1024*1024)} MB")
+                        except StorageLowError:
+                            raise
+                        except:
+                            pass  # Continue if metadata fetch fails
+                    
                     logger.info(f"Using options: {ydl_opts}")
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         try:
