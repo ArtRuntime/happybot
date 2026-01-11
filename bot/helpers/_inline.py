@@ -5,7 +5,7 @@
 
 from pyrogram import types
 
-from bot import config
+from bot import app, config
 
 
 class Inline:
@@ -46,7 +46,7 @@ class Inline:
             if not private
             else [
                 [
-                    self.ikb(text=lang["help"], url=f"https://t.me/{config.BOT_USERNAME}?start=help"),
+                    self.ikb(text=lang["help"], url=f"https://t.me/{app.username}?start=help"),
                     self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL),
                 ],
             ]
