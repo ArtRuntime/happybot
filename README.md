@@ -7,6 +7,8 @@ sdk: docker
 pinned: false
 license: mit
 short_description: Advanced Telegram bot for music streaming
+thumbnail: >-
+  https://cdn-uploads.huggingface.co/production/uploads/68d1c65f0c37d916b2989027/US350-3RWQuWZ_ODPGwjJ.png
 ---
 
 # 🎵 HappyBot - Advanced Telegram Music & Anime Bot
