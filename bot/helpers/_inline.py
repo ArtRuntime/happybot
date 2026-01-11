@@ -64,7 +64,7 @@ class Inline:
                 ]
             ]
         else:
-            cbs = ["admins", "auth", "autoplay", "anime", "blist", "ping", "play", "queue", "stats", "sudo"]
+            cbs = ["admins", "auth", "autoplay", "blist", "ping", "play", "player", "queue", "stats", "sudo"]
             buttons = [
                 self.ikb(text=cb.capitalize(), callback_data=f"help {cb}")
                 for cb in cbs
@@ -90,13 +90,13 @@ class Inline:
         return self.ikm([[self.ikb(text=text, url=config.SUPPORT_CHAT)]])
 
     def play_queued(
-        self, chat_id: int, item_id: str, _text: str
+        self, chat_id: int, position: int, _text: str
     ) -> types.InlineKeyboardMarkup:
         return self.ikm(
             [
                 [
                     self.ikb(
-                        text=_text, callback_data=f"controls force {chat_id} {item_id}"
+                        text=_text, callback_data=f"controls force {chat_id} {position}"
                     )
                 ]
             ]
@@ -161,142 +161,8 @@ class Inline:
         return self.ikm(
             [
                 [
-                    self.ikb(text="❐", copy_text=link),
                     self.ikb(text="Youtube", url=link),
                 ],
             ]
-        )
-
-    def anime_search_results(self, results: list, chat_id: int, page: int = 0) -> types.InlineKeyboardMarkup:
-        """Display anime search results with pagination."""
-        buttons = []
-        # Show 5 results per page
-        start = page * 5
-        end = min(start + 5, len(results))
-        
-        for i in range(start, end):
-            anime = results[i]
-            title = anime.get("title", "Unknown")
-            buttons.append([
-                self.ikb(text=f"📺 {title[:40]}", callback_data=f"anime_sel {chat_id} {i}")
-            ])
-        
-        # Pagination
-        nav_row = []
         if page > 0:
             nav_row.append(self.ikb(text="◀️ Prev", callback_data=f"anime_pg {chat_id} {page-1}"))
-        if end < len(results):
-            nav_row.append(self.ikb(text="Next ▶️", callback_data=f"anime_pg {chat_id} {page+1}"))
-        
-        if nav_row:
-            buttons.append(nav_row)
-        
-        buttons.append([self.ikb(text="❌ Close", callback_data="anime_close")])
-        
-        return self.ikm(buttons)
-
-    def anime_episode_selector(
-        self, 
-        chat_id: int,
-        episodes: list, 
-        current_page: int = 0
-    ) -> types.InlineKeyboardMarkup:
-        """Display episode selection with pagination."""
-        buttons = []
-        episodes_per_page = 10
-        start = current_page * episodes_per_page
-        end = min(start + episodes_per_page, len(episodes))
-        
-        # Episode buttons
-        ep_buttons = []
-        for ep in episodes[start:end]:
-            ep_no = ep.get("episode_no", "?")
-            ep_id_str = ep.get("id", "")
-            
-            # Extract episode ID from 'id' field (format: "anime-name?ep=12345")
-            if "?ep=" in ep_id_str:
-                ep_id = ep_id_str.split("?ep=")[1]
-                ep_buttons.append(
-                    self.ikb(text=f"Ep {ep_no}", callback_data=f"anime_play {chat_id} {ep_id}")
-                )
-        
-        # Arrange episode buttons in rows of 5
-        for i in range(0, len(ep_buttons), 5):
-            buttons.append(ep_buttons[i:i+5])
-        
-        # Pagination
-        nav_row = []
-        if current_page > 0:
-            nav_row.append(self.ikb(text="◀️ Prev", callback_data=f"anime_epg {chat_id} {current_page-1}"))
-        if end < len(episodes):
-            nav_row.append(self.ikb(text="Next ▶️", callback_data=f"anime_epg {chat_id} {current_page+1}"))
-        
-        if nav_row:
-            buttons.append(nav_row)
-        
-        buttons.append([
-            self.ikb(text="❌ Close", callback_data="anime_close")
-        ])
-        
-        return self.ikm(buttons)
-
-    def anime_controls(
-        self,
-        chat_id: int,
-        status: str = None
-    ) -> types.InlineKeyboardMarkup:
-        """Display anime playback controls with episode/server/type selectors."""
-        keyboard = []
-        
-        # Status bar
-        if status:
-            keyboard.append([
-                self.ikb(text=status, callback_data=f"anime_status {chat_id}")
-            ])
-        
-        # Main playback controls
-        keyboard.append([
-            self.ikb(text="▷", callback_data=f"anime_resume {chat_id}"),
-            self.ikb(text="II", callback_data=f"anime_pause {chat_id}"),
-            self.ikb(text="‣‣I", callback_data=f"anime_skip {chat_id}"),
-            self.ikb(text="▢", callback_data=f"anime_stop {chat_id}"),
-        ])
-        
-        # Server/Type selectors (opens menu to change)
-        keyboard.append([
-            self.ikb(text="🌐 Server", callback_data=f"anime_srv {chat_id}"),
-            self.ikb(text="🗣 Sub/Dub", callback_data=f"anime_tg {chat_id}"),
-        ])
-        
-        return self.ikm(keyboard)
-
-    def anime_server_selector(
-        self,
-        chat_id: int,
-        servers: list,
-        current_type: str = "sub"
-    ) -> types.InlineKeyboardMarkup:
-        """Display available servers."""
-        buttons = []
-        
-        # Group servers by type (sub/dub)
-        sub_servers = [s for s in servers if s.get("type") == "sub"]
-        dub_servers = [s for s in servers if s.get("type") == "dub"]
-        
-        target_servers = sub_servers if current_type == "sub" else dub_servers
-        
-        # Server buttons
-        for server in target_servers[:6]:  # Show max 6 servers
-            server_name = server.get("server_name", "HD-1")
-            buttons.append([
-                self.ikb(
-                    text=f"🌐 {server_name}",
-                    callback_data=f"anime_use_srv {chat_id} {server_name} {current_type}"
-                )
-            ])
-        
-        buttons.append([
-            self.ikb(text="❌ Close", callback_data="anime_close")
-        ])
-        
-        return self.ikm(buttons)

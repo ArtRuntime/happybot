@@ -50,8 +50,14 @@ class Thumbnail:
 
     async def generate(self, song: Track, size=(1280, 720)) -> str:
         try:
-            temp = f"cache/temp_{song.id}.jpg"
-            output = f"cache/{song.id}.png"
+            # Create cache directory if it doesn't exist
+            os.makedirs("cache", exist_ok=True)
+            
+            # Sanitize filename - remove invalid characters from URL
+            import hashlib
+            safe_id = hashlib.md5(song.id.encode()).hexdigest()[:16]
+            temp = f"cache/temp_{safe_id}.jpg"
+            output = f"cache/{safe_id}.png"
             if os.path.exists(output):
                 return output
 

@@ -78,12 +78,14 @@ async def _controls(_, query: types.CallbackQuery):
         reply = query.lang["play_skipped"].format(user)
 
     elif action == "force":
-        pos, media = queue.check_item(chat_id, args[3])
-        if not media or pos == -1:
+        position = int(args[3])  # Now it's a position, not item_id
+        media = queue.get_queue(chat_id)[position] if position < len(queue.get_queue(chat_id)) else None
+        
+        if not media:
             return await query.edit_message_text(query.lang["play_expired"])
 
         m_id = queue.get_current(chat_id).message_id
-        queue.force_add(chat_id, media, remove=pos)
+        queue.force_add(chat_id, media, remove=position)
         try:
             await app.delete_messages(
                 chat_id=chat_id, message_ids=[m_id, media.message_id], revoke=True

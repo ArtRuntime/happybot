@@ -48,10 +48,8 @@ lang = Language()
 
 from bot.core.telegram import Telegram
 from bot.core.youtube import YouTube
-from bot.core.anime import AnimeAPI
 tg = Telegram()
 yt = YouTube()
-anime = AnimeAPI()
 
 from bot.helpers import Queue
 queue = Queue()
@@ -72,6 +70,5 @@ async def stop() -> None:
     await app.exit()
     await userbot.exit()
     await db.close()
-    await anime.close()
 
     logger.info("Stopped.\n")

@@ -109,7 +109,7 @@ async def play_hndlr(
                     m.from_user.mention,
                 ),
                 reply_markup=buttons.play_queued(
-                    m.chat.id, file.id, m.lang["play_now"]
+                    m.chat.id, position, m.lang["play_now"]
                 ),
             )
             

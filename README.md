@@ -1,5 +1,5 @@
 ---
-title: HappyBot - Telegram Music & Anime Bot
+title: HappyBot - Telegram Music Bot
 emoji: 🎵
 colorFrom: pink
 colorTo: purple
@@ -11,9 +11,9 @@ thumbnail: >-
   https://cdn-uploads.huggingface.co/production/uploads/68d1c65f0c37d916b2989027/US350-3RWQuWZ_ODPGwjJ.png
 ---
 
-# 🎵 HappyBot - Advanced Telegram Music & Anime Bot
+# 🎵 HappyBot - Advanced Telegram Music Bot
 
-A powerful, feature-rich Telegram bot for streaming music, videos, and anime in voice chats. Built with Python, Pyrogram, and PyTgCalls.
+A powerful, feature-rich Telegram bot for streaming music and videos in voice chats. Built with Python, Pyrogram, and PyTgCalls.
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -33,13 +33,6 @@ A powerful, feature-rich Telegram bot for streaming music, videos, and anime in 
 - **Genre Detection**: Automatic genre, artist, and language detection
 - **Personalized**: Learns from your music preferences
 - **YouTube-Only**: Autoplay works only for YouTube sources (search & URLs)
-
-### 📺 Anime Streaming
-- **Direct Streaming**: Watch anime directly in Telegram voice chats
-- **Multiple Servers**: Choose from different streaming servers (HD-1, HD-2, etc.)
-- **Sub/Dub Support**: Toggle between subtitled and dubbed versions
-- **Episode Selection**: Easy navigation through episodes
-- **Auto-Play Movies**: Single-episode anime starts automatically
 
 ### 📁 Telegram Files
 - **File Support**: Play audio/video files uploaded to Telegram
@@ -115,7 +108,6 @@ docker run -d --env-file .env happybot
 - `/help` - Show help menu
 - `/play <query>` - Play audio from YouTube (search or URL)
 - `/vplay <query>` - Play video from YouTube (search or URL)
-- `/anime <query>` - Search and stream anime
 - `/stop` - Stop playback and clear queue
 - `/pause` - Pause playback
 - `/resume` - Resume playback
@@ -140,8 +132,6 @@ Every playback includes interactive buttons:
 - ⏭️ Skip
 - 🔁 Replay
 - ⏹️ Stop
-- 🌐 Server (anime only)
-- 🗣️ Sub/Dub (anime only)
 
 ## 🛠️ Technology Stack
 
@@ -160,12 +150,6 @@ Every playback includes interactive buttons:
 - Fallback to genre-based recommendations
 - Supports multiple languages and genres
 
-### Anime API Integration
-- Custom anime API wrapper
-- Support for multiple CDN providers
-- Automatic header injection for geo-restrictions
-- Fallback to download for blocked streams
-
 ### Smart Caching
 - Episode data cached per chat
 - Reduced API calls
@@ -182,9 +166,6 @@ AUTOPLAY_MODE=smart  # smart|random|off
 # YouTube settings
 YTDLP_VERBOSE=false
 PLAYLIST_LIMIT=25
-
-# Anime API
-ANIME_API_URL=https://anime-api.example.com
 
 # Queue limits
 QUEUE_LIMIT=50
@@ -208,7 +189,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [PyTgCalls](https://github.com/pytgcalls/pytgcalls) for voice chat support
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) for YouTube extraction
-- Anime API providers for streaming support
 
 ## 📧 Support
 

@@ -406,7 +406,15 @@ class TgCall(PyTgCalls):
                 await message.edit_text(_lang["error_no_audio"])
                 await self.play_next(chat_id)
             else:
-                # For anime, just stop - don't trigger music autoplay
+                # For anime, show error and stop - don't trigger music autoplay
+                await message.edit_text(
+                    "❌ **Failed to play anime**\n\n"
+                    "The stream failed and download also failed.\n\n"
+                    "**Try:**\n"
+                    "• Selecting a different server\n"
+                    "• Trying another episode\n"
+                    "• Checking your connection"
+                )
                 await self.stop(chat_id)
         except (ConnectionNotFound, TelegramServerError):
             await self.stop(chat_id)
