@@ -16,25 +16,32 @@ class Inline:
         return types.InlineKeyboardMarkup(rows)
 
     def controls(
-        self, chat_id: int, status: str = None, autoplay: bool = False
+        self, chat_id: int, status: str = None, timer: str = None, autoplay: bool = False
     ) -> types.InlineKeyboardMarkup:
         buttons = []
-        btns = []
 
-        # Status row
+        # Status row (song title/status)
         if status:
-            btns.append(self.ikb(text=status, callback_data=f"controls status {chat_id}"))
+            buttons.append([self.ikb(text=status, callback_data=f"controls status {chat_id}")])
+        
+        # Timer/Progress bar row
+        if timer:
+            buttons.append([self.ikb(text=timer, callback_data=f"controls status {chat_id}")])
 
-        # Main playback controls
-        btns.append(self.ikb(text="‖", callback_data=f"controls pause {chat_id}"))
-        btns.append(self.ikb(text="‣‣I", callback_data=f"controls skip {chat_id}"))
-        btns.append(self.ikb(text="▢", callback_data=f"controls stop {chat_id}"))
-
-        # Autoplay toggle
-        autoplay_symbol = "∞" if autoplay else "∞"
-        btns.append(self.ikb(text=autoplay_symbol, callback_data=f"controls autoplay {chat_id}"))
-
-        buttons.append(btns)
+        # Main playback controls with replay button
+        buttons.append([
+            self.ikb(text="▷", callback_data=f"controls resume {chat_id}"),
+            self.ikb(text="II", callback_data=f"controls pause {chat_id}"),
+            self.ikb(text="⥁", callback_data=f"controls replay {chat_id}"),
+            self.ikb(text="‣‣I", callback_data=f"controls skip {chat_id}"),
+            self.ikb(text="▢", callback_data=f"controls stop {chat_id}"),
+        ])
+        
+        # Autoplay toggle row
+        autoplay_icon = "✅" if autoplay else "❌"
+        buttons.append([
+            self.ikb(text=f"Autoplay {autoplay_icon}", callback_data=f"controls autoplay {chat_id}")
+        ])
 
         return self.ikm(buttons)
 
@@ -191,3 +198,39 @@ class Inline:
                 ],
             ]
         )
+
+    def autoplay_menu(self, chat_id: int, current_mode: str = None) -> types.InlineKeyboardMarkup:
+        """Menu to select autoplay mode: OFF, Smart, or specific genre"""
+        buttons = []
+        
+        # Mode selection row
+        mode_row = []
+        modes = [("OFF", "off"), ("Smart", "smart")]
+        for label, mode in modes:
+            check = "✅" if current_mode == mode else "⚪"
+            mode_row.append(self.ikb(text=f"{check} {label}", callback_data=f"autoplay_set {chat_id} {mode}"))
+        buttons.append(mode_row)
+        
+        # Genre selection (3 per row)
+        genres = [
+            "pop", "rock", "hiphop", "electronic", "jazz", "classical",
+            "metal", "country", "rnb", "indie", "latin", "kpop",
+            "anime", "lofi", "blues", "reggae", "disco", "punk",
+            "ambient", "random"
+        ]
+        
+        genre_buttons = []
+        for genre in genres:
+            check = "✅" if current_mode == genre else "⚪"
+            genre_buttons.append(
+                self.ikb(text=f"{check} {genre.title()}", callback_data=f"autoplay_set {chat_id} {genre}")
+            )
+        
+        # Arrange in rows of 3
+        for i in range(0, len(genre_buttons), 3):
+            buttons.append(genre_buttons[i:i+3])
+        
+        # Close button
+        buttons.append([self.ikb(text="❌ Close", callback_data="autoplay_close")])
+        
+        return self.ikm(buttons)

@@ -33,19 +33,15 @@ async def _controls(_, query: types.CallbackQuery):
     if action == "status":
         return await query.answer()
     
-    # Handle autoplay toggle separately (before the generic "processing" answer)
+    
+    # Handle autoplay toggle - show menu to select mode/genre
     if action == "autoplay":
         current = await db.get_autoplay(chat_id)
-        new_state = False if current else "smart"
-        await db.set_autoplay(chat_id, new_state)
-        status_text = "ON (Smart)" if new_state else "OFF"
-        await query.answer(f"Autoplay: {status_text}", show_alert=False)
-        try:
-            keyboard = buttons.controls(chat_id, autoplay=new_state)
-            await query.edit_message_reply_markup(reply_markup=keyboard)
-        except:
-            pass
+        # Show autoplay menu
+        keyboard = buttons.autoplay_menu(chat_id, current)
+        await query.edit_message_reply_markup(reply_markup=keyboard)
         return
+
 
     await query.answer(query.lang["processing"], show_alert=True)
 
