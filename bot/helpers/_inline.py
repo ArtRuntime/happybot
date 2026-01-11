@@ -39,18 +39,28 @@ class Inline:
         return self.ikm(buttons)
 
     def start_key(self, lang: dict, private: bool) -> types.InlineKeyboardMarkup:
-        return self.ikm(
-            [
-                [self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL)],
-            ]
-            if not private
-            else [
+        if private:
+            return self.ikm(
                 [
-                    self.ikb(text=lang["help"], url=f"https://t.me/{app.username}?start=help"),
-                    self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL),
-                ],
-            ]
-        )
+                    [
+                        self.ikb(
+                            text=lang["add_me"],
+                            url=f"https://t.me/{app.username}?startgroup=true",
+                        )
+                    ],
+                    [self.ikb(text=lang["help"], callback_data="help")],
+                    [
+                        self.ikb(text=lang["support"], url=config.SUPPORT_CHAT),
+                        self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL),
+                    ],
+                ]
+            )
+        else:
+            return self.ikm(
+                [
+                    [self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL)],
+                ]
+            )
 
     def help_markup(
         self, _lang: dict, back: bool = False
