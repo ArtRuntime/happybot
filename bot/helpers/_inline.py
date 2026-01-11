@@ -126,6 +126,9 @@ class Inline:
                 ]
             )
 
+    def ping_markup(self, text: str) -> types.InlineKeyboardMarkup:
+        return self.ikm([[self.ikb(text=text, url=config.SUPPORT_CHAT)]])
+
     def stats_butt(self, lang: dict) -> types.InlineKeyboardMarkup:
         rows = [
             [
@@ -133,6 +136,40 @@ class Inline:
                 self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL),
             ],
         ]
+        return self.ikm(rows)
+
+    def settings_markup(
+        self, lang: dict, admin_only: str, cmd_delete: str, language: str, chat_id: int
+    ) -> types.InlineKeyboardMarkup:
+        return self.ikm(
+            [
+                [
+                    self.ikb(text=lang["play_mode"] + " ➜", callback_data="settings"),
+                    self.ikb(text=admin_only, callback_data="settings play"),
+                ],
+                [
+                    self.ikb(text=lang["cmd_delete"] + " ➜", callback_data="settings"),
+                    self.ikb(text=cmd_delete, callback_data="settings delete"),
+                ],
+                [
+                    self.ikb(text=lang["language"] + " ➜", callback_data="settings"),
+                    self.ikb(text=language, callback_data="language"),
+                ],
+            ]
+        )
+
+    def lang_markup(self, current_lang: str) -> types.InlineKeyboardMarkup:
+        from bot import lang as lang_mod
+        langs = lang_mod.get_languages()
+        
+        buttons = [
+            self.ikb(
+                text=f"{name} ({code}) {'✔️' if code == current_lang else ''}",
+                callback_data=f"lang_change {code}",
+            )
+            for code, name in langs.items()
+        ]
+        rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
         return self.ikm(rows)
 
     def yt_key(self, link: str) -> types.InlineKeyboardMarkup:
