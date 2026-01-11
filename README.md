@@ -2,11 +2,11 @@
 title: HappyBot - Telegram Music & Anime Bot
 emoji: 🎵
 colorFrom: pink
-colorTo: gray
+colorTo: purple
 sdk: docker
 pinned: false
 license: mit
-short_description: Advanced Telegram bot for music streaming, anime, and voice chat
+short_description: Advanced Telegram bot for music streaming
 ---
 
 # 🎵 HappyBot - Advanced Telegram Music & Anime Bot
