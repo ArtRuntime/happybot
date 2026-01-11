@@ -356,8 +356,9 @@ class TgCall(PyTgCalls):
                     )).id
                 
                 # Proactive autoplay preload - predict and download next song in background
-                # Now works with ALL song types (search, URL, playlist) for TF-IDF recommendations
-                if autoplay_status and not queue.get_next(chat_id, check=True):
+                # Skip autoplay for anime - only works for music
+                is_anime = getattr(media, 'req_type', None) == 'anime'
+                if autoplay_status and not queue.get_next(chat_id, check=True) and not is_anime:
                     task = asyncio.create_task(self._preload_next_song(chat_id, media))
                     self._preload_tasks[chat_id] = task
         except FileNotFoundError:
