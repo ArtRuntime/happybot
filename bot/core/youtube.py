@@ -115,6 +115,9 @@ class YouTube:
         logger.info(f"Marked downloads cancelled for chat {chat_id}")
 
     def get_cookies(self):
+        # Create cookie directory if it doesn't exist
+        os.makedirs(self.cookie_dir, exist_ok=True)
+        
         if not self.checked:
             for file in os.listdir(self.cookie_dir):
                 if file.endswith(".txt"):
