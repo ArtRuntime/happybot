@@ -116,7 +116,7 @@ class RecommendationEngine:
                     {'$limit': 2000}  # Keep dataset size manageable
                 ]
 
-            # Execute aggregation - await aggregate() first, then iterate cursor
+            # Execute aggregation
             cursor = await collection.aggregate(pipeline)
             documents = [doc async for doc in cursor]
             
