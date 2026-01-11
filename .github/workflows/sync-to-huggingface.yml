@@ -43,10 +43,10 @@ jobs:
           echo "Cleared existing content in cloned HF repo."
 
           # 3. GitHub repository ke files ko cloned HF repository mein copy karein
-          # `.git` aur `.github` folders ko source se exclude karein
-          # `ls -A | grep -vE '^\.git$|^\.github$'`: yeh current directory ke saare files/folders ko list karta hai,
-          #   `.git` aur `.github` ko chhod kar. Phir unhe target directory mein copy karta hai.
-          cp -r $(ls -A | grep -vE '^\.git$|^\.github$') $TARGET_DIR/
+          # `.git`, `.github` aur target directory ko source se exclude karein
+          # `ls -A | grep -vE '^\.git$|^\.github$|^hf-repo-clone$'`: yeh current directory ke saare files/folders ko list karta hai,
+          #   `.git`, `.github` aur `hf-repo-clone` ko chhod kar. Phir unhe target directory mein copy karta hai.
+          cp -r $(ls -A | grep -vE '^\.git$|^\.github$|^hf-repo-clone$') $TARGET_DIR/
           echo "Copied files from GitHub repo to cloned HF repo."
 
           # 4. Cloned HF repository directory mein jaayen
