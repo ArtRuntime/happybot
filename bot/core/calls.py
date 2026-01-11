@@ -401,8 +401,13 @@ class TgCall(PyTgCalls):
                         )
                         return  # Don't play next
 
-            await message.edit_text(_lang["error_no_audio"])
-            await self.play_next(chat_id)
+            # Don't auto-play next for anime failures
+            if getattr(media, 'req_type', None) != 'anime':
+                await message.edit_text(_lang["error_no_audio"])
+                await self.play_next(chat_id)
+            else:
+                # For anime, just stop - don't trigger music autoplay
+                await self.stop(chat_id)
         except (ConnectionNotFound, TelegramServerError):
             await self.stop(chat_id)
             await message.edit_text(_lang["error_tg_server"])
@@ -452,8 +457,16 @@ class TgCall(PyTgCalls):
             pass
 
         if not media:
-            # Check for autoplay - now works with ALL song types (search, URL, playlist)
-            if old_media:  # Removed req_type check - TF-IDF works with any song type
+            # Autoplay ONLY for YouTube search and YouTube/YT Music URLs
+            # Everything else (Telegram files, anime, playlists) = no autoplay
+            if old_media:
+                old_req_type = getattr(old_media, 'req_type', None)
+                
+                # Only allow autoplay for YouTube search and direct YouTube URLs
+                if old_req_type not in ['search', 'youtube']:
+                    logger.info(f"Skipping autoplay - req_type '{old_req_type}' not eligible for autoplay")
+                    return await self.stop(chat_id)
+                
                 # Check if autoplay enabled
                 mode = await db.get_autoplay(chat_id)
                 new_track = None

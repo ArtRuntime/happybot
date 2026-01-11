@@ -504,7 +504,10 @@ class YouTube:
         if not track:
             return None, None, None
             
-        text = (track.title + " " + (track.channel_name or "")).lower()
+        # Use getattr to safely access attributes that might not exist on Media objects
+        title = getattr(track, 'title', '')
+        channel_name = getattr(track, 'channel_name', '')
+        text = (title + " " + (channel_name or "")).lower()
         artist = None
         genre = None
         language = None

@@ -54,8 +54,13 @@ async def play_hndlr(
             file = tracks[0]
             tracks.remove(file)
             file.message_id = sent.id
+            # Mark as playlist to prevent autoplay interference
+            file.req_type = "playlist"
         else:
             file = await yt.search(url, sent.id, video=video)
+            # Mark YouTube/YT Music URLs for autoplay eligibility
+            if file:
+                file.req_type = "youtube"
 
         if not file:
             return await sent.edit_text(
@@ -78,9 +83,10 @@ async def play_hndlr(
 
     if not file:
         return await sent.edit_text(m.lang["play_usage"])
-
-    # Block live streams (duration_sec is 0 or None)
-    if not file.duration_sec:
+    
+    # Block m3u8 live streams only (not Telegram files with unknown duration)
+    # Telegram files can have duration_sec=0 if metadata isn't available
+    if m3u8 and not file.duration_sec:
         return await sent.edit_text(m.lang["play_unsupported"])
 
     if await db.is_logger():
