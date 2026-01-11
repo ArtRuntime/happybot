@@ -10,11 +10,11 @@ python-dotenv~=1.2.1
 yt-dlp[default]>=2025.12.8
 dnspython
 fastapi
-uvicorn 
+uvicorn
 httpx
-py7zr 
-async-lru 
-langgraph 
+py7zr
+async-lru
+langgraph
 aiohttp-socks
 PySocks
 pandas~=2.2.0

@@ -1,0 +1,69 @@
+name: Sync to Hugging Face Hub
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:    
+
+jobs:
+  sync-to-huggingface:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout GitHub Repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true # Agar aap Git LFS files use kar rahe hain, toh isse enable karein
+
+      - name: Configure Git for Hugging Face Commit
+        run: |
+          git config --global user.email "action@github.com" # Apni pasand ka email use kar sakte hain
+          git config --global user.name "GitHub Action"     # Apni pasand ka naam use kar sakte hain
+
+      - name: Sync to Hugging Face Hub
+        env:
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+          HF_USERNAME: alex5402
+          HF_REPO_TYPE: spaces #'models' ya 'spaces'
+          HF_REPO_NAME: happybot 
+          TARGET_DIR: hf-repo-clone 
+
+        run: |
+          echo "Starting sync process..."
+
+          # 1. Hugging Face repository ko clone karein
+          # Authentication ke liye token ko URL mein embedded kiya gaya hai
+          git clone https://hf:$HUGGINGFACE_TOKEN@huggingface.co/$HF_REPO_TYPE/$HF_USERNAME/$HF_REPO_NAME $TARGET_DIR
+          echo "Cloned Hugging Face repository: $HF_REPO_TYPE/$HF_USERNAME/$HF_REPO_NAME"
+
+          # 2. Cloned HF repository ke content ko delete karein
+          # `.git` folder aur `.gitattributes` ko delete nahi karna hai
+          find $TARGET_DIR/ -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitattributes" -exec rm -rf {} +
+          echo "Cleared existing content in cloned HF repo."
+
+          # 3. GitHub repository ke files ko cloned HF repository mein copy karein
+          # `.git` aur `.github` folders ko source se exclude karein
+          # `ls -A | grep -vE '^\.git$|^\.github$'`: yeh current directory ke saare files/folders ko list karta hai,
+          #   `.git` aur `.github` ko chhod kar. Phir unhe target directory mein copy karta hai.
+          cp -r $(ls -A | grep -vE '^\.git$|^\.github$') $TARGET_DIR/
+          echo "Copied files from GitHub repo to cloned HF repo."
+
+          # 4. Cloned HF repository directory mein jaayen
+          cd $TARGET_DIR
+
+          # 5. Saare changes ko stage karein
+          git add .
+
+          # 6. Check karein ki commit karne ke liye koi changes hain ya nahi
+          if git diff --cached --exit-code; then
+            echo "No changes detected. Skipping commit and push."
+          else
+            # 7. Changes ko commit karein
+            git commit -m "Sync from GitHub Action (GitHub SHA: ${{ github.sha }})"
+            echo "Changes committed locally."
+
+            # 8. Changes ko Hugging Face Hub par push karein
+            git push
+            echo "Successfully pushed changes to Hugging Face Hub!"
+          fi
