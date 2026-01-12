@@ -37,6 +37,24 @@ class Utilities:
         parts = [int(p) for p in time.strip().split(":")]
         return sum(value * 60**i for i, value in enumerate(reversed(parts)))
 
+    def make_progress_bar(self, current: int, total: int) -> str:
+        """Generates a progress bar string like: 00:34 | ━━●━━━━━━━ | -01:42"""
+        percentage = current / total if total > 0 else 0
+        
+        # Design: 10 chars, '●' as knob, '━' as line
+        fileed_len = int(percentage * 10)
+        bar = '━' * fileed_len + '●' + '━' * (10 - fileed_len)
+        
+        # Format times
+        def fmt(sec):
+            m, s = divmod(int(sec), 60)
+            return f"{m:02d}:{s:02d}"
+            
+        current_str = fmt(current)
+        remain_str = fmt(total - current)
+        
+        return f"{current_str} | {bar} | -{remain_str}"
+
 
     def get_url(self, message_1: types.Message) -> str | None:
         link = None

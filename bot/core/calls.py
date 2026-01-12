@@ -13,7 +13,7 @@ from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 
 from bot import app, config, db, lang, logger, queue, userbot, yt
-from bot.helpers import Media, Track, buttons, thumb
+from bot.helpers import Media, Track, buttons, thumb, utils
 
 
 class TgCall(PyTgCalls):
@@ -44,9 +44,27 @@ class TgCall(PyTgCalls):
             except:
                 pass
         
-        # Cleanup current song
+        # Cleanup current song and update UI
         media = queue.get_current(chat_id)
         if media:
+            # Update player message to "Stopped" state
+            if media.message_id:
+                try:
+                    _lang = await lang.get_lang(chat_id)
+                    autoplay_status = await db.get_autoplay(chat_id)
+                    await app.edit_message_reply_markup(
+                        chat_id=chat_id,
+                        message_id=media.message_id,
+                        reply_markup=buttons.controls(
+                            chat_id=chat_id, 
+                            status=_lang["stopped"], 
+                            remove=True,
+                            autoplay=autoplay_status
+                        ),
+                    )
+                except:
+                    pass
+
             if media.file_path and os.path.exists(media.file_path):
                 try:
                     os.remove(media.file_path)
@@ -338,7 +356,15 @@ class TgCall(PyTgCalls):
                     media.user,
                 )
                 autoplay_status = await db.get_autoplay(chat_id)
-                keyboard = buttons.controls(chat_id, autoplay=autoplay_status)
+                
+                # Generate progress bar
+                try:
+                    duration_sec = utils.to_seconds(media.duration)
+                    timer = utils.make_progress_bar(0, duration_sec)
+                except Exception as e:
+                    timer = None
+                
+                keyboard = buttons.controls(chat_id, timer=timer, autoplay=autoplay_status)
                 try:
                     await message.edit_media(
                         media=InputMediaPhoto(

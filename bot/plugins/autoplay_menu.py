@@ -5,7 +5,7 @@
 from pyrogram import filters, types
 
 from bot import app, db, lang, queue
-from bot.helpers import buttons
+from bot.helpers import buttons, utils
 
 
 # Autoplay menu callbacks
@@ -38,7 +38,19 @@ async def _autoplay_close(_, query: types.CallbackQuery):
     
     if current:
         autoplay_status = await db.get_autoplay(chat_id)
-        keyboard = buttons.controls(chat_id, autoplay=autoplay_status)
+        
+        # Restore progress bar
+        try:
+            played = getattr(current, 'time', 0)
+            duration = getattr(current, 'duration_sec', 0)
+            if duration > 0:
+                timer = utils.make_progress_bar(played, duration)
+            else:
+                timer = None
+        except:
+            timer = None
+            
+        keyboard = buttons.controls(chat_id, timer=timer, autoplay=autoplay_status)
         await query.edit_message_reply_markup(reply_markup=keyboard)
     else:
         await query.message.delete()

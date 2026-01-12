@@ -16,7 +16,7 @@ class Inline:
         return types.InlineKeyboardMarkup(rows)
 
     def controls(
-        self, chat_id: int, status: str = None, timer: str = None, autoplay: bool = False
+        self, chat_id: int, status: str = None, timer: str = None, autoplay: bool = False, remove: bool = False
     ) -> types.InlineKeyboardMarkup:
         buttons = []
 

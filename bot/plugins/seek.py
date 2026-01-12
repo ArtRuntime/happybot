@@ -3,6 +3,7 @@
 # This file is part of happybot
 
 
+import asyncio
 from pyrogram import filters, types
 
 from bot import anon, app, db, lang, queue
@@ -13,6 +14,12 @@ from bot.helpers import can_manage_vc
 @lang.language()
 @can_manage_vc
 async def _seek(_, m: types.Message):
+    if await db.get_cmd_delete(m.chat.id):
+        try:
+            await m.delete()
+        except:
+            pass
+
     if len(m.command) < 2:
         return await m.reply_text(m.lang["play_seek_usage"].format(m.command[0]))
 
@@ -50,3 +57,10 @@ async def _seek(_, m: types.Message):
     await sent.edit_text(
         m.lang["play_seeked"].format(stype, start_from, m.from_user.mention)
     )
+    
+    # Cleanup confirmation message
+    await asyncio.sleep(5)
+    try:
+        await sent.delete()
+    except:
+        pass

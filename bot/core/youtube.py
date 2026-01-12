@@ -679,15 +679,49 @@ class YouTube:
     ]
 
     LANGUAGE_HINTS = {
-        "hindi": ["hindi", "bollywood", "arijit", "shreya", "jubin", "t-series", "zee music", "tips official"],
-        "punjabi": ["punjabi", "diljit", "karan", "ap dhillon", "sidhu"],
-        "korean": ["korean", "kpop", "k-pop", "hybe", "jyp", "sm entertainment"],
-        "japanese": ["japanese", "jpop", "j-pop", "anime"],
-        "spanish": ["spanish", "latino", "reggaeton", "bad bunny", "karol g"],
-        "portuguese": ["portuguese", "brasil", "brazil", "anitta", "baile funk"],
-        "french": ["french", "français", "francais"],
-        "arabic": ["arabic", "arrabi", "amr diab"],
-        "english": ["vevo", "official video", "official music video"],
+        # --- ASIA ---
+        "hindi": ["hindi", "bollywood", "arijit", "shreya", "jubin", "t-series", "zee music", "tips official", "saregama", "badshah", "neha kakkar"],
+        "punjabi": ["punjabi", "diljit", "karan aujla", "ap dhillon", "sidhu moosewala", "speed records", "geet mp3", "guru randhawa", "b praak"],
+        "tamil": ["tamil", "kollywood", "anirudh", "a.r. rahman", "yuvan", "sid sriram", "sony music south", "think music india"],
+        "telugu": ["telugu", "tollywood", "thaman", "devi sri prasad", "aditya music", "sid sriram"],
+        "malayalam": ["malayalam", "mollywood", "gopi sundar", "shaan rahman", "sushin shyam"],
+        "kannada": ["kannada", "sandalwood", "arjun janya", "vijay prakash"],
+        "bengali": ["bengali", "bangla", "svf", "arijit singh bengali", "anupam roy"],
+        "marathi": ["marathi", "ajay atul", "swapnil bandodkar"],
+        "urdu": ["urdu", "cokestudio", "coke studio", "pakistani", "atif aslam", "rahat fateh ali khan", "nusrat"],
+        "korean": ["korean", "kpop", "k-pop", "hybe", "jyp", "sm entertainment", "yg", "bts", "blackpink"],
+        "japanese": ["japanese", "jpop", "j-pop", "anime", "aniplex", "toho", "yoasobi", "kenshi yonezu", "vocaloid"],
+        "chinese": ["chinese", "mandarin", "cantonese", "cpop", "mandopop", "cantopop", "jay chou", "gem"],
+        "thai": ["thai", "t-pop", "gmm grammy", "rsiam"],
+        "vietnamese": ["vietnamese", "v-pop", "son tung", "hoang thuy linh"],
+        "indonesian": ["indonesian", "indo pop", "dangdut", "noah", "tulus", "mahalini"],
+        "filipino": ["filipino", "tagalog", "opm", "ben&ben", "moira"],
+
+        # --- EUROPE ---
+        "spanish": ["spanish", "español", "latino", "reggaeton", "bad bunny", "karol g", "rosala", "shakira", "j balvin"],
+        "french": ["french", "français", "francais", "pnl", "stromae", "gims", "indila", "aya nakamura"],
+        "german": ["german", "deutsch", "rammstein", "deutschrap", "apache 207", "cro"],
+        "italian": ["italian", "italiano", "maneskin", "eros ramazzotti", "laura pausini", "sanremo"],
+        "russian": ["russian", "русский", "miyagi", "morgenshtern", "egreed", "instasamka"],
+        "ukrainian": ["ukrainian", "українська", "kalush", "okean elzy"],
+        "portuguese": ["portuguese", "português", "brasil", "brazil", "anitta", "sertanejo", "baile funk", "ludmilla"],
+        "turkish": ["turkish", "türkçe", "ezhel", "sezen aksu", "tarkan", "murat boz"],
+        "greek": ["greek", "ellinika"],
+        "polish": ["polish", "polski", "sanah"],
+        "dutch": ["dutch", "nederlands"],
+        "swedish": ["swedish", "svenska", "zara larsson", "avicii"],
+        "romanian": ["romanian", "romana", "inna", "alexandra stan"],
+
+        # --- MIDDLE EAST & AFRICA ---
+        "arabic": ["arabic", "arab", "عربي", "amr diab", "nancy ajram", "saad lamjarred", "elissa", "sherine", "rotana"],
+        "persian": ["persian", "farsi", "iranian", "googoosh", "ebi", "shadmehr"],
+        "hebrew": ["hebrew", "omer adam", "noa kirel"],
+        "swahili": ["swahili", "diamond platnumz", "wasafi"],
+        "yoruba": ["yoruba", "afrobeats", "burna boy", "wizkid", "davido", "asake"],
+        "amharic": ["amharic", "ethiopian"],
+
+        # --- GLOBAL / WESTERN ---
+        "english": ["english", "official video", "official music video", "lyrics", "vevo", "audio"],
     }
 
     def _build_genre_keywords(self):
@@ -746,8 +780,22 @@ class YouTube:
         genre = None
         language = None
 
-        # PRIORITY 1: Extract artist from title (Structure: "Artist - Title")
-        if title and ('-' in title or '|' in title):
+        # PRIORITY 1: Extract artist from title
+        
+        # Pattern 1: "Song Title by Artist" (most explicit)
+        if title and ' by ' in title.lower():
+            import re
+            match = re.search(r'\s+by\s+(.+?)(?:\s*[\|\(]|$)', title, re.IGNORECASE)
+            if match:
+                potential_artist = match.group(1).strip()
+                # Clean trailing junk
+                potential_artist = re.sub(r'\s*[\|\(].*$', '', potential_artist).strip()
+                keywords = ['official', 'video', 'lyrics', 'audio', 'music', 'visualizer']
+                if 2 < len(potential_artist) < 30 and not any(k in potential_artist.lower() for k in keywords):
+                    artist = potential_artist
+        
+        # Pattern 2: "Artist - Title" or "Title - Artist" (if 'by' not found)
+        if not artist and title and ('-' in title or '|' in title):
             parts = title.replace('|', '-').split('-')
             if len(parts) >= 2:
                 first_part = parts[0].strip()
@@ -820,24 +868,27 @@ class YouTube:
         """Generate a dynamic search keyword based on detected genre/artist/language."""
         import random
         
-        # STRATEGY 1: Artist-based search (PRIMARY)
-        if artist and len(artist) > 3:
+        # STRATEGY 1: Artist-based search (PRIMARY - always use if artist available)
+        if artist and len(artist) > 2:
             generic_names = {"vevo", "official", "music", "records", "entertainment", "topic", "channel", "label"}
             if not any(g in artist.lower() for g in generic_names):
-                if attempt == 0:
-                    return f"{artist} songs"
-                elif attempt == 1:
-                    return f"{artist} latest songs"
-                elif attempt == 2:
-                    return f"songs like {artist}"
+                # Cycle through artist queries for all attempts
+                queries = [
+                    f"{artist} songs",
+                    f"{artist} latest songs", 
+                    f"songs like {artist}",
+                    f"{artist} best songs",
+                    f"{artist} top hits"
+                ]
+                return queries[attempt % len(queries)]
         
         # Language prefix
         lang_prefix = ""
         if language and language not in ("english", None):
             lang_prefix = f"{language} "
         
-        # STRATEGY 2: Genre + Language
-        if genre and genre in self.GENRE_KEYWORDS:
+        # STRATEGY 2: Genre + Language (only if no artist)
+        if genre and genre not in (None, "random") and genre in self.GENRE_KEYWORDS:
             keywords = self.GENRE_KEYWORDS[genre]
             idx = (attempt + random.randint(0, 2)) % len(keywords)
             return f"{lang_prefix}{keywords[idx]}"
@@ -1018,6 +1069,13 @@ class YouTube:
                                             req_type="search"
                                         )
                                         track.full_title = full_title
+                                        # Also preserve artist/genre/language if they were detected
+                                        if hasattr(previous_track, 'detected_artist'):
+                                            track.detected_artist = previous_track.detected_artist
+                                        if hasattr(previous_track, 'detected_genre'):
+                                            track.detected_genre = previous_track.detected_genre
+                                        if hasattr(previous_track, 'detected_language'):
+                                            track.detected_language = previous_track.detected_language
                                         return track
                         except Exception as e:
                             logger.debug(f"Failed to search for recommendation '{rec_title}': {e}")
@@ -1033,7 +1091,19 @@ class YouTube:
         
         # STRATEGY 1: Determine Genre/Artist/Language from previous track (for fallback)
         if mode == "smart" and previous_track:
-            genre, artist, language = self._detect_genre(previous_track)
+            # First, try to reuse previously detected values (from autoplay chain)
+            artist = getattr(previous_track, 'detected_artist', None)
+            genre = getattr(previous_track, 'detected_genre', None)
+            language = getattr(previous_track, 'detected_language', None)
+            
+            # If not found, perform fresh detection
+            if not artist or not genre or not language:
+                detected_genre, detected_artist, detected_language = self._detect_genre(previous_track)
+                # Use detected values where cached values are missing
+                genre = genre or detected_genre
+                artist = artist or detected_artist
+                language = language or detected_language
+            
             logger.info(f"Smart Autoplay Fallback: Detected genre={genre}, artist={artist}, language={language}")
         elif mode in self.GENRE_KEYWORDS:
             # User explicitly requested a genre
@@ -1084,8 +1154,11 @@ class YouTube:
                     video=previous_track.video if previous_track else False,
                     req_type="search"
                 )
-                # Store full title for future duplicate checking
+                # Store full title AND detected artist/genre/language for future autoplay iterations
                 track.full_title = full_title
+                track.detected_artist = artist  # Preserve artist for next iteration
+                track.detected_genre = genre    # Preserve genre for next iteration
+                track.detected_language = language  # Preserve language for next iteration
                 return track
             
             logger.warning(f"Smart Autoplay: No results for '{keyword}', trying next strategy...")
@@ -1095,9 +1168,6 @@ class YouTube:
 
     # Keep old method for backward compat or fallback
     async def autoplay_search(self, query: str, video: bool = False) -> Track | None:
-        # Search for the same title but get a few results
-        # We'll pick the 2nd result to pretend it's "next"
-        # Ideally we'd use related videos but this is a decent heuristic for now
         
         with proxy_env():
              _search = VideosSearch(query, limit=5, with_live=False)
