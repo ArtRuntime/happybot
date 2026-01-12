@@ -34,16 +34,12 @@ class Config:
             url for url in getenv("COOKIES_URL", "").split(" ")
             if url
         ]
+        self.BROWSER_JSON_URL = getenv("BROWSER_JSON_URL")
         self.COOKIE_REFRESH_INTERVAL = int(getenv("COOKIE_REFRESH_INTERVAL", 5)) * 60  # Default 5 minutes
         self.DEFAULT_THUMB = getenv("DEFAULT_THUMB", "https://images.alphacoders.com/685/thumb-1920-685120.png")
         self.PING_IMG = getenv("PING_IMG", "https://images6.alphacoders.com/134/thumb-1920-1345576.jpeg")
         self.START_IMG = getenv("START_IMG", "https://images3.alphacoders.com/132/thumbbig-1323165.webp")
         self.AFK_TIMEOUT = int(getenv("AFK_TIMEOUT", 5)) * 60  # Default 5 minutes
-        
-        # TF-IDF Recommendation System (disabled - no dataset)
-        self.ENABLE_TFIDF_RECOMMENDATIONS = getenv("ENABLE_TFIDF_RECOMMENDATIONS", "true").lower() in ("true", "1", "yes")
-        self.RECOMMENDATION_DATASET_PATH = getenv("RECOMMENDATION_DATASET_PATH", "bot/data/recommendations_dataset.csv")
-        self.RECOMMENDATION_LIMIT = int(getenv("RECOMMENDATION_LIMIT", 10))
         
         # Direct Streaming (stream from URL without downloading)
         self.ENABLE_DIRECT_STREAMING = getenv("ENABLE_DIRECT_STREAMING", "true").lower() in ("true", "1", "yes")

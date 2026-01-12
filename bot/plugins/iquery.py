@@ -3,13 +3,15 @@
 # This file is part of happybot
 
 
-from py_yt import VideosSearch
+from ytmusicapi import YTMusic
 from pyrogram import types
+import asyncio
 
 from bot import app
-from bot.core.youtube import proxy_env
-from bot.helpers import buttons
+from bot.helpers import buttons, utils
 
+# Initialize YTMusic
+ytmusic = YTMusic()
 
 @app.on_inline_query(~app.bl_users)
 async def inline_query_handler(_, query: types.InlineQuery):
@@ -18,28 +20,38 @@ async def inline_query_handler(_, query: types.InlineQuery):
         return
 
     try:
-        with proxy_env():
-            search = VideosSearch(text, limit=15)
-            results = (await search.next()).get("result", [])
-
+        # Search using ytmusicapi
+        results = await asyncio.to_thread(ytmusic.search, text, filter="songs", limit=15)
+        
         answers = []
         for video in results:
-            title = video.get("title", "Unknown Title").title()
+            if video.get('resultType') not in ['song', 'video']:
+                continue
+                
+            video_id = video.get("videoId")
+            if not video_id:
+                continue
+                
+            title = video.get("title", "Unknown Title")
+            
+            # Extract artist
+            artists = video.get("artists", [])
+            channel = artists[0].get("name") if artists else "Unknown Artist"
+            
+            # Duration
             duration = video.get("duration", "N/A")
-            views = video.get("viewCount", {}).get("short", "N/A")
-            thumbnail = video.get("thumbnails", [{}])[0].get("url", "").split("?")[0]
-            channel = video.get("channel", {}).get("name", "Unknown Channel")
-            channellink = video.get("channel", {}).get("link", "https://youtube.com")
-            link = video.get("link", "https://youtube.com")
-            published = video.get("publishedTime", "N/A")
-
-            description = f"{views} | {duration} | {channel} | {published}"
+            
+            # Thumbnail
+            thumbnails = video.get("thumbnails", [])
+            thumbnail = thumbnails[-1].get("url", "").split("?")[0] if thumbnails else ""
+            
+            link = f"https://www.youtube.com/watch?v={video_id}"
+            
+            description = f"{channel} | {duration}"
             caption = (
-                f"<b>Title:</b> <a href='{link}'>{title[:250]}</a>\n\n"
-                f"<b>Duration:</b> {duration}\n"
-                f"<b>Views:</b> <code>{views}</code>\n"
-                f"<b>Channel:</b> <a href='{channellink}'>{channel}</a>\n"
-                f"<b>Published:</b> {published}\n\n"
+                f"<b>Title:</b> <a href='{link}'>{title[:100]}</a>\n\n"
+                f"<b>Artist:</b> {channel}\n"
+                f"<b>Duration:</b> {duration}\n\n"
                 f"<u><i>Fetched by {app.name}</i></u>"
             )
 
@@ -55,5 +67,5 @@ async def inline_query_handler(_, query: types.InlineQuery):
 
         if answers:
             await app.answer_inline_query(query.id, results=answers, cache_time=5)
-    except:
-        pass
+    except Exception as e:
+        print(f"Inline query error: {e}")

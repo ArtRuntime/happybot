@@ -64,14 +64,15 @@ async def main():
         importlib.import_module(f"bot.plugins.{module}")
     logger.info(f"Loaded {len(all_modules)} modules.")
 
-    if config.COOKIES_URL:
+    if config.COOKIES_URL or config.BROWSER_JSON_URL:
+        # Initial fetch
         await yt.save_cookies(config.COOKIES_URL)
         
         # Start background cookie refresh task
         async def cookie_refresh_loop():
             while True:
                 await asyncio.sleep(config.COOKIE_REFRESH_INTERVAL)
-                logger.info("Refreshing cookies from COOKIES_URL...")
+                logger.info("Auto-refreshing cookies/auth...")
                 await yt.save_cookies(config.COOKIES_URL)
         
         asyncio.create_task(cookie_refresh_loop())
