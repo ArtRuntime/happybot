@@ -151,8 +151,13 @@ class YouTube:
         if "music.youtube.com" in query:
             query = query.replace("music.youtube.com", "www.youtube.com")
 
-        # If it's a URL, use generic search
-        if hasattr(self, 'regex') and not self.regex.match(query) and query.startswith("http"):
+
+        # If it's a YouTube URL, use generic search to get exact video
+        if self.valid(query):
+            return await self._generic_search(query, m_id, video)
+        
+        # If it's any other URL, use generic search
+        if query.startswith("http"):
             return await self._generic_search(query, m_id, video)
         
         if not self.ytmusic:
