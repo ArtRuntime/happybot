@@ -165,7 +165,7 @@ class YouTube:
             results = await asyncio.to_thread(
                 self.ytmusic.search,
                 query,
-                filter=filter_type,
+                # filter=filter_type,  # User requested no filter
                 limit=1
             )
             
@@ -186,9 +186,9 @@ class YouTube:
                 if not duration:
                     duration = "0:00"
                 
-                # Get thumbnail
+                # Get thumbnail - preserve full URL
                 thumbnails = data.get("thumbnails", [])
-                thumbnail = thumbnails[-1].get("url", "").split("?")[0] if thumbnails else ""
+                thumbnail = thumbnails[-1].get("url", "") if thumbnails else None
                 
                 return Track(
                     id=video_id,
@@ -288,9 +288,9 @@ class YouTube:
                 if not duration:
                     duration = "0:00"
                 
-                # Get thumbnail
+                # Get thumbnail - preserve full URL
                 thumbnails = data.get("thumbnails", [])
-                thumbnail = thumbnails[-1].get("url", "").split("?")[0] if thumbnails else ""
+                thumbnail = thumbnails[-1].get("url", "") if thumbnails else None
                 
                 track = Track(
                     id=video_id,
@@ -566,7 +566,7 @@ class YouTube:
                 results = await asyncio.to_thread(
                     self.ytmusic.search,
                     f"{mode} music",
-                    filter="songs",
+                    # filter="songs", # User requested no filter
                     limit=20
                 )
                 
@@ -580,9 +580,9 @@ class YouTube:
                         artists = selected.get("artists", [])
                         channel_name = artists[0].get("name") if artists else "Unknown"
                         
-                        # Thumbnail
+                        # Thumbnail - preserve full URL
                         thumbnails = selected.get("thumbnails", [])
-                        thumbnail = thumbnails[-1].get("url", "").split("?")[0] if thumbnails else ""
+                        thumbnail = thumbnails[-1].get("url", "") if thumbnails else None
                         
                         return Track(
                             id=video_id,
@@ -641,9 +641,9 @@ class YouTube:
             if not duration:
                 duration = "0:00"
             
-            # Get thumbnail
+            # Get thumbnail - preserve full URL
             thumbnails = selected.get("thumbnails", [])
-            thumbnail = thumbnails[-1].get("url", "").split("?")[0] if thumbnails else ""
+            thumbnail = thumbnails[-1].get("url", "") if thumbnails else None
             
             return Track(
                 id=video_id,
@@ -691,9 +691,9 @@ class YouTube:
                         if not duration:
                             duration = "0:00"
                         
-                        # Get thumbnail
+                        # Get thumbnail - preserve full URL
                         thumbnails = track.get("thumbnails", [])
-                        thumbnail = thumbnails[-1].get("url", "").split("?")[0] if thumbnails else ""
+                        thumbnail = thumbnails[-1].get("url", "") if thumbnails else None
                         
                         return Track(
                             id=video_id,

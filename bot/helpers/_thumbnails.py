@@ -61,7 +61,15 @@ class Thumbnail:
             if os.path.exists(output):
                 return output
 
-            await self.save_thumb(temp, song.thumbnail)
+            # Fallback: Use YouTube default thumbnail if ytmusicapi thumbnail is missing
+            thumbnail_url = song.thumbnail
+            if not thumbnail_url or thumbnail_url == "":
+                from bot import logger
+                logger.warning(f"Thumbnail URL missing for {song.title}, using YouTube default")
+                # Use YouTube's default thumbnail based on video ID
+                thumbnail_url = f"https://img.youtube.com/vi/{song.id}/maxresdefault.jpg"
+            
+            await self.save_thumb(temp, thumbnail_url)
             thumb = Image.open(temp).convert("RGBA").resize(size, Image.Resampling.LANCZOS)
             blur = thumb.filter(ImageFilter.GaussianBlur(25))
             image = ImageEnhance.Brightness(blur).enhance(.40)

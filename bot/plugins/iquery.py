@@ -21,7 +21,7 @@ async def inline_query_handler(_, query: types.InlineQuery):
 
     try:
         # Search using ytmusicapi
-        results = await asyncio.to_thread(ytmusic.search, text, filter="songs", limit=15)
+        results = await asyncio.to_thread(ytmusic.search, text, limit=15)
         
         answers = []
         for video in results:
@@ -41,9 +41,9 @@ async def inline_query_handler(_, query: types.InlineQuery):
             # Duration
             duration = video.get("duration", "N/A")
             
-            # Thumbnail
+            # Thumbnail - preserve full URL
             thumbnails = video.get("thumbnails", [])
-            thumbnail = thumbnails[-1].get("url", "").split("?")[0] if thumbnails else ""
+            thumbnail = thumbnails[-1].get("url", "") if thumbnails else ""
             
             link = f"https://www.youtube.com/watch?v={video_id}"
             
