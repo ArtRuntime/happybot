@@ -39,13 +39,47 @@ try:
     if not hasattr(UpdateGroupCall, "chat"):
         logger.info("Applying UpdateGroupCall monkeypatch for PyTgCalls...")
         setattr(UpdateGroupCall, "chat", property(lambda self: MockChat(self.peer)))
+    
+    # Fix for 'UpdateGroupCall' object has no attribute 'chat_id'
+    if not hasattr(UpdateGroupCall, "chat_id"):
+        setattr(UpdateGroupCall, "chat_id", property(lambda self: self.chat.id))
+        
 except ImportError:
     pass
 except Exception as e:
     logger.error(f"Failed to apply monkeypatch: {e}")
+
+def force_google_dns():
+    """Force usage of Google DNS to resolve music.youtube.com issues."""
+    try:
+        logger.info("Forcing Google DNS (8.8.8.8)...")
+        dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
+        dns.resolver.default_resolver.nameservers = ["8.8.8.8", "8.8.4.4"]
+        
+        # Patch socket.getaddrinfo to use dnspython
+        original_getaddrinfo = socket.getaddrinfo
+        
+        def patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+            try:
+                # Use custom resolver for specific domains or all
+                answers = dns.resolver.resolve(host, 'A')
+                ip = answers[0].to_text()
+                # logger.debug(f"Resolved {host} -> {ip}")
+                return original_getaddrinfo(ip, port, family, type, proto, flags)
+            except Exception:
+                # Fallback to system DNS
+                return original_getaddrinfo(host, port, family, type, proto, flags)
+                
+        socket.getaddrinfo = patched_getaddrinfo
+        logger.info("DNS patching applied.")
+    except Exception as e:
+        logger.error(f"Failed to force DNS: {e}")
 # -----------------------------------------------
 
 async def main():
+    # Force DNS first
+    force_google_dns()
+
     if config.PROXY_URL:
         # Log Proxy Config (Masked)
         masked_proxy = f"{config.PROXY_SCHEME}://{config.PROXY_HOST}:{config.PROXY_PORT}"
