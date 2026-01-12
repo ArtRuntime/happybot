@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 # This file is part of happybot
 
-from pyrogram import filters, types
+from pyrogram import filters, types, errors
 
 from bot import app, db, lang, queue
 from bot.helpers import buttons, utils
@@ -27,7 +27,10 @@ async def _autoplay_set(_, query: types.CallbackQuery):
     
     # Update menu to show current selection
     keyboard = buttons.autoplay_menu(chat_id, mode if mode != "off" else False)
-    await query.edit_message_reply_markup(reply_markup=keyboard)
+    try:
+        await query.edit_message_reply_markup(reply_markup=keyboard)
+    except errors.MessageNotModified:
+        pass
 
 
 @app.on_callback_query(filters.regex("autoplay_close") & ~app.bl_users)
