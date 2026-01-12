@@ -66,10 +66,30 @@ class Thumbnail:
             if not thumbnail_url or thumbnail_url == "":
                 from bot import logger
                 logger.warning(f"Thumbnail URL missing for {song.title}, using YouTube default")
-                # Use YouTube's default thumbnail based on video ID
-                thumbnail_url = f"https://img.youtube.com/vi/{song.id}/maxresdefault.jpg"
+                
+                # Try multiple YouTube thumbnail qualities (maxres not always available)
+                thumbnail_qualities = [
+                    f"https://img.youtube.com/vi/{song.id}/maxresdefault.jpg",
+                    f"https://img.youtube.com/vi/{song.id}/hqdefault.jpg",
+                    f"https://img.youtube.com/vi/{song.id}/mqdefault.jpg",
+                    f"https://img.youtube.com/vi/{song.id}/default.jpg"
+                ]
+                
+                # Try each quality until one works
+                for quality_url in thumbnail_qualities:
+                    try:
+                        await self.save_thumb(temp, quality_url)
+                        if os.path.exists(temp):
+                            break
+                    except:
+                        continue
+            else:
+                await self.save_thumb(temp, thumbnail_url)
             
-            await self.save_thumb(temp, thumbnail_url)
+            if not os.path.exists(temp):
+                from bot import logger
+                logger.error(f"All thumbnail download attempts failed for {song.title}")
+                return config.DEFAULT_THUMB
             thumb = Image.open(temp).convert("RGBA").resize(size, Image.Resampling.LANCZOS)
             blur = thumb.filter(ImageFilter.GaussianBlur(25))
             image = ImageEnhance.Brightness(blur).enhance(.40)
