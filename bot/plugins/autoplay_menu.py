@@ -53,4 +53,7 @@ async def _autoplay_close(_, query: types.CallbackQuery):
         keyboard = buttons.controls(chat_id, timer=timer, autoplay=autoplay_status)
         await query.edit_message_reply_markup(reply_markup=keyboard)
     else:
-        await query.message.delete()
+        # If nothing playing, show stopped state instead of deleting
+        autoplay_status = await db.get_autoplay(chat_id)
+        keyboard = buttons.controls(chat_id, status="Stopped 🛑", autoplay=autoplay_status, remove=True)
+        await query.edit_message_reply_markup(reply_markup=keyboard)

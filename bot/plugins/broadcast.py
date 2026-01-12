@@ -13,7 +13,7 @@ from bot import app, db, lang
 
 broadcasting = False
 
-@app.on_message(filters.command(["broadcast"]) & app.sudoers)
+@app.on_message(filters.command(["broadcast", "gcast", "brodcast"]) & app.sudoers)
 @lang.language()
 async def _broadcast(_, message: types.Message):
     global broadcasting
@@ -34,53 +34,70 @@ async def _broadcast(_, message: types.Message):
         users.extend(await db.get_users())
 
     chats.extend(groups + users)
+    
+    # Check if there are any chats to broadcast to
+    if not chats:
+        return await message.reply_text("❌ No chats or users found to broadcast to.")
+
     broadcasting = True
-
-    await msg.forward(app.logger)
-    await (await app.send_message(
-        chat_id=app.logger, 
-        text=message.lang["gcast_log"].format(
-            message.from_user.id,
-            message.from_user.mention,
-            message.text,
-        )
-    )).pin(disable_notification=False)
-    await asyncio.sleep(5)
-
-    failed = ""
-    for chat in chats:
-        if not broadcasting:
-            await sent.edit_text(message.lang["gcast_stopped"].format(count, ucount))
-            break
-
+    
+    try:
         try:
-            (
-                await msg.copy(chat, reply_markup=msg.reply_markup)
-                if "-copy" in message.text
-                else await msg.forward(chat)
-            )
-            if chat in groups:
-                count += 1
-            else:
-                ucount += 1
-            await asyncio.sleep(0.1)
-        except errors.FloodWait as fw:
-            await asyncio.sleep(fw.value + 30)
-        except Exception as ex:
-            failed += f"{chat} - {ex}\n"
-            continue
+            await msg.forward(app.logger)
+            await (await app.send_message(
+                chat_id=app.logger, 
+                text=message.lang["gcast_log"].format(
+                    message.from_user.id,
+                    message.from_user.mention,
+                    message.text,
+                )
+            )).pin(disable_notification=False)
+        except Exception as e:
+            await message.reply_text(f"⚠️ Warning: Logger access failed: {e}")
 
-    text = message.lang["gcast_end"].format(count, ucount)
-    if failed:
-        with open("errors.txt", "w") as f:
-            f.write(failed)
-        await message.reply_document(
-            document="errors.txt",
-            caption=text,
-        )
-        os.remove("errors.txt")
-    broadcasting = False
-    await sent.edit_text(text)
+        await asyncio.sleep(5)
+
+        failed = ""
+        for chat in chats:
+            if not broadcasting:
+                await sent.edit_text(message.lang["gcast_stopped"].format(count, ucount))
+                break
+
+            try:
+                (
+                    await msg.copy(chat, reply_markup=msg.reply_markup)
+                    if "-copy" in message.text
+                    else await msg.forward(chat)
+                )
+                if chat in groups:
+                    count += 1
+                else:
+                    ucount += 1
+                await asyncio.sleep(0.1)
+            except errors.FloodWait as fw:
+                await asyncio.sleep(fw.value + 30)
+                # Retry once after floodwait? 
+                # For now just continue to avoid complexity in simple loop
+            except Exception as ex:
+                failed += f"{chat} - {ex}\n"
+                continue
+
+        text = message.lang["gcast_end"].format(count, ucount)
+        if failed:
+            with open("errors.txt", "w") as f:
+                f.write(failed)
+            await message.reply_document(
+                document="errors.txt",
+                caption=text,
+            )
+            os.remove("errors.txt")
+        await sent.edit_text(text)
+        
+    except Exception as e:
+        await sent.edit_text(f"❌ Broadcast failed with critical error: {e}")
+        
+    finally:
+        broadcasting = False
 
 
 @app.on_message(filters.command(["stop_gcast", "stop_broadcast"]) & app.sudoers)
