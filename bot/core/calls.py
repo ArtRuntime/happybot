@@ -538,9 +538,13 @@ class TgCall(PyTgCalls):
                 # Check if autoplay enabled
                 mode = await db.get_autoplay(chat_id)
                 new_track = None
-                if mode:
-                    # Autoplay logic with TF-IDF smart mode
-                    new_track = await yt.smart_autoplay(mode, previous_track=old_media)
+                
+                if not mode:
+                    # Autoplay disabled - just stop
+                    return await self.stop(chat_id)
+
+                # Autoplay logic with TF-IDF smart mode
+                new_track = await yt.smart_autoplay(mode, previous_track=old_media)
                 
                 # Check if user added a song while we were fetching autoplay
                 # If yes, prioritize user song and discard/ignore the autoplay result

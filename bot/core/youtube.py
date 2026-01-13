@@ -267,11 +267,35 @@ class YouTube:
                         if fallback:
                             logger.warning("_generic_search: Primary cookie failed. Retrying with fallback...")
                             ydl_opts["cookiefile"] = fallback
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
-                                info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
-                                logger.info("✅ Fallback cookie success (search)!")
+                            try:
+                                with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
+                                    info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
+                                    logger.info("✅ Fallback cookie success (search)!")
+                            except Exception as ex2:
+                                if "Sign in to confirm" in str(ex2):
+                                    logger.warning("_generic_search: Fallback cookie failed. Retrying cookie-less (Android + Proxy)...")
+                                    # Cookie-less Fallback
+                                    ydl_opts.pop("cookiefile", None)
+                                    ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
+                                    if config.PROXY_URL:
+                                        ydl_opts["proxy"] = config.PROXY_URL
+                                    
+                                    with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                                        info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
+                                        logger.info("✅ Cookie-less fallback success (search)!")
+                                else:
+                                    raise ex2
                         else:
-                            raise ex
+                            # Direct check for cookie-less if no fallback exists
+                            logger.warning("_generic_search: Primary failed and no fallback. Retrying cookie-less...")
+                            ydl_opts.pop("cookiefile", None)
+                            ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
+                            if config.PROXY_URL:
+                                ydl_opts["proxy"] = config.PROXY_URL
+                            
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                                info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
+                                logger.info("✅ Cookie-less fallback success (search)!")
                     else:
                         raise ex
                 
@@ -432,11 +456,33 @@ class YouTube:
                         if fallback:
                             logger.warning("_generic_playlist: Primary cookie failed. Retrying with fallback...")
                             ydl_opts["cookiefile"] = fallback
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
-                                info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
-                                logger.info("✅ Fallback cookie success (playlist)!")
+                            try:
+                                with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
+                                    info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
+                                    logger.info("✅ Fallback cookie success (playlist)!")
+                            except Exception as ex2:
+                                if "Sign in to confirm" in str(ex2):
+                                    logger.warning("_generic_playlist: Fallback cookie failed. Retrying cookie-less (Android + Proxy)...")
+                                    ydl_opts.pop("cookiefile", None)
+                                    ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
+                                    if config.PROXY_URL:
+                                        ydl_opts["proxy"] = config.PROXY_URL
+                                    
+                                    with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                                        info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
+                                        logger.info("✅ Cookie-less fallback success (playlist)!")
+                                else:
+                                    raise ex2
                         else:
-                            raise ex
+                            logger.warning("_generic_playlist: Primary failed and no fallback. Retrying cookie-less...")
+                            ydl_opts.pop("cookiefile", None)
+                            ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
+                            if config.PROXY_URL:
+                                ydl_opts["proxy"] = config.PROXY_URL
+                            
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                                info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
+                                logger.info("✅ Cookie-less fallback success (playlist)!")
                     else:
                         raise ex
                 
@@ -574,6 +620,8 @@ class YouTube:
                     # Check for Sign in error and retry with fallback
                     if "Sign in to confirm" in str(ex):
                         fallback = self._get_fallback_cookie()
+                        success = False
+                        
                         if fallback:
                             logger.warning("Primary cookie failed with Sign-in error. Retrying with fallback cookie...")
                             ydl_opts["cookiefile"] = fallback
@@ -584,7 +632,24 @@ class YouTube:
                                 return filename
                             except Exception as ex2:
                                 logger.error(f"Fallback cookie also failed: {ex2}")
-                                return None
+                                if "Sign in to confirm" not in str(ex2):
+                                    return None
+                        
+                        # Cookie-less Fallback (Third Layer)
+                        logger.warning("Primary/Fallback failed. Retrying cookie-less (Android + Proxy)...")
+                        ydl_opts.pop("cookiefile", None)
+                        ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
+                        if config.PROXY_URL:
+                            ydl_opts["proxy"] = config.PROXY_URL
+                            
+                        try:
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                ydl.download([url])
+                            logger.info("✅ Cookie-less fallback success!")
+                            return filename
+                        except Exception as ex3:
+                            logger.error(f"Cookie-less fallback failed: {ex3}")
+                            return None
                     
                     logger.error(f"yt-dlp Execution Error: {ex}")
                     if cookie: self.cookies.remove(cookie)
@@ -657,11 +722,33 @@ class YouTube:
                         if fallback:
                             logger.warning("get_stream_url: Primary cookie failed. Retrying with fallback...")
                             ydl_opts["cookiefile"] = fallback
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
-                                info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
-                                logger.info("✅ Fallback cookie success (stream)!")
+                            try:
+                                with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
+                                    info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
+                                    logger.info("✅ Fallback cookie success (stream)!")
+                            except Exception as ex2:
+                                if "Sign in to confirm" in str(ex2):
+                                    logger.warning("get_stream_url: Fallback cookie failed. Retrying cookie-less (Android + Proxy)...")
+                                    ydl_opts.pop("cookiefile", None)
+                                    ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
+                                    if config.PROXY_URL:
+                                        ydl_opts["proxy"] = config.PROXY_URL
+                                    
+                                    with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                                        info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
+                                        logger.info("✅ Cookie-less fallback success (stream)!")
+                                else:
+                                    raise ex2
                         else:
-                            raise ex
+                            logger.warning("get_stream_url: Primary failed and no fallback. Retrying cookie-less...")
+                            ydl_opts.pop("cookiefile", None)
+                            ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
+                            if config.PROXY_URL:
+                                ydl_opts["proxy"] = config.PROXY_URL
+                            
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                                info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
+                                logger.info("✅ Cookie-less fallback success (stream)!")
                     else:
                         raise ex
                 
