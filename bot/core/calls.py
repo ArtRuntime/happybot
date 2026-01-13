@@ -517,7 +517,13 @@ class TgCall(PyTgCalls):
                 if mode:
                     # Autoplay logic with TF-IDF smart mode
                     new_track = await yt.smart_autoplay(mode, previous_track=old_media)
-                if new_track:
+                
+                # Check if user added a song while we were fetching autoplay
+                # If yes, prioritize user song and discard/ignore the autoplay result
+                if queue.get_queue(chat_id):
+                    logger.info(f"User added song during autoplay fetch in {chat_id} - Switching to user track")
+                    media = queue.get_next(chat_id)
+                elif new_track:
                     # Add to queue
                     queue.add(chat_id, new_track)
                     media = new_track # Set media to the new track
