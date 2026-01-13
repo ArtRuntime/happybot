@@ -71,7 +71,7 @@ class YouTube:
         
         self.cookies = [] # Reset list
         for file in os.listdir(self.cookie_dir):
-            if file.endswith(".txt"):
+            if file.endswith(".txt") and "fallback" not in file:
                 self.cookies.append(f"{self.cookie_dir}/{file}")
         
         if not self.cookies:
@@ -81,6 +81,13 @@ class YouTube:
             return None
             
         return random.choice(self.cookies)
+
+    def _get_fallback_cookie(self) -> str | None:
+        """Get the path to the fallback cookie file if it exists."""
+        path = f"{self.cookie_dir}/cookie_fallback.txt"
+        if os.path.exists(path):
+            return path
+        return None
 
 
     async def save_cookies(self, urls: list[str]) -> None:
@@ -251,7 +258,22 @@ class YouTube:
             
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = await asyncio.to_thread(ydl.extract_info, url, download=False)
+                try:
+                    info = await asyncio.to_thread(ydl.extract_info, url, download=False)
+                except Exception as ex:
+                    # Retry with fallback cookie if Sign in error
+                    if "Sign in to confirm" in str(ex):
+                        fallback = self._get_fallback_cookie()
+                        if fallback:
+                            logger.warning("_generic_search: Primary cookie failed. Retrying with fallback...")
+                            ydl_opts["cookiefile"] = fallback
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
+                                info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
+                                logger.info("✅ Fallback cookie success (search)!")
+                        else:
+                            raise ex
+                    else:
+                        raise ex
                 
             if not info:
                 return None
@@ -401,7 +423,22 @@ class YouTube:
             
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = await asyncio.to_thread(ydl.extract_info, url, download=False)
+                try:
+                    info = await asyncio.to_thread(ydl.extract_info, url, download=False)
+                except Exception as ex:
+                    # Retry with fallback cookie if Sign in error
+                    if "Sign in to confirm" in str(ex):
+                        fallback = self._get_fallback_cookie()
+                        if fallback:
+                            logger.warning("_generic_playlist: Primary cookie failed. Retrying with fallback...")
+                            ydl_opts["cookiefile"] = fallback
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
+                                info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
+                                logger.info("✅ Fallback cookie success (playlist)!")
+                        else:
+                            raise ex
+                    else:
+                        raise ex
                 
             if not info:
                 return tracks
@@ -528,13 +565,30 @@ class YouTube:
                         pass  # Continue if metadata fetch fails
                 
                 logger.info(f"Using options: {ydl_opts}")
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    try:
+                
+                # Try primary download
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([url])
-                    except Exception as ex:
-                        logger.error(f"yt-dlp Execution Error: {ex}")
-                        if cookie: self.cookies.remove(cookie)
-                        return None
+                except Exception as ex:
+                    # Check for Sign in error and retry with fallback
+                    if "Sign in to confirm" in str(ex):
+                        fallback = self._get_fallback_cookie()
+                        if fallback:
+                            logger.warning("Primary cookie failed with Sign-in error. Retrying with fallback cookie...")
+                            ydl_opts["cookiefile"] = fallback
+                            try:
+                                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                    ydl.download([url])
+                                logger.info("✅ Fallback cookie success!")
+                                return filename
+                            except Exception as ex2:
+                                logger.error(f"Fallback cookie also failed: {ex2}")
+                                return None
+                    
+                    logger.error(f"yt-dlp Execution Error: {ex}")
+                    if cookie: self.cookies.remove(cookie)
+                    return None
             except Exception as e:
                 logger.error(f"yt-dlp Initialization Error: {e}")
                 return None
@@ -594,7 +648,22 @@ class YouTube:
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Extract info without downloading
-                info = await asyncio.to_thread(ydl.extract_info, url, download=False)
+                try:
+                    info = await asyncio.to_thread(ydl.extract_info, url, download=False)
+                except Exception as ex:
+                    # Retry with fallback cookie if Sign in error
+                    if "Sign in to confirm" in str(ex):
+                        fallback = self._get_fallback_cookie()
+                        if fallback:
+                            logger.warning("get_stream_url: Primary cookie failed. Retrying with fallback...")
+                            ydl_opts["cookiefile"] = fallback
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
+                                info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
+                                logger.info("✅ Fallback cookie success (stream)!")
+                        else:
+                            raise ex
+                    else:
+                        raise ex
                 
                 if not info:
                     logger.error("Could not extract stream info")
