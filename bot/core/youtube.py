@@ -69,17 +69,18 @@ class YouTube:
         # Create cookie directory if it doesn't exist
         os.makedirs(self.cookie_dir, exist_ok=True)
         
-        if not self.checked:
-            for file in os.listdir(self.cookie_dir):
-                if file.endswith(".txt"):
-                    self.cookies.append(f"{self.cookie_dir}/{file}")
-            self.checked = True
-        if not self.cookies:
+        cookies_list = []
+        for file in os.listdir(self.cookie_dir):
+            if file.endswith(".txt"):
+                cookies_list.append(f"{self.cookie_dir}/{file}")
+        
+        if not cookies_list:
             if not self.warned:
                 self.warned = True
                 logger.warning("Cookies are missing; downloads might fail.")
             return None
-        return random.choice(self.cookies)
+            
+        return random.choice(cookies_list)
 
     async def save_cookies(self, urls: list[str]) -> None:
         logger.info("Saving cookies/auth...")
@@ -570,6 +571,10 @@ class YouTube:
                 }
             },
         }
+        
+        # Use proxy if configured
+        if config.PROXY_URL:
+            ydl_opts["proxy"] = config.PROXY_URL
         
         # Select format
         if video:
