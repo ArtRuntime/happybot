@@ -233,8 +233,16 @@ class YouTube:
             if not info:
                 return None
 
+            # Extract video ID for autoplay support
+            video_id = info.get("id") or url
+            
+            # Determine req_type for autoplay eligibility
+            req_type = "generic"
+            if "youtube.com" in url or "youtu.be" in url or "music.youtube.com" in url:
+                req_type = "youtube"
+
             return Track(
-                id=url, 
+                id=video_id,  # Use video ID instead of full URL
                 channel_name=info.get("uploader", "Unknown"),
                 duration=str(info.get("duration", 0)), 
                 duration_sec=info.get("duration", 0),
@@ -244,6 +252,7 @@ class YouTube:
                 url=url,
                 view_count=str(info.get("view_count", "")),
                 video=video,
+                req_type=req_type,  # Set req_type for autoplay eligibility
             )
         except Exception as e:
             logger.error(f"Generic search failed: {e}")
