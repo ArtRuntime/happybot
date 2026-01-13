@@ -383,10 +383,18 @@ class TgCall(PyTgCalls):
                         reply_markup=keyboard,
                     )).id
                 
+                
                 # Proactive autoplay preload - predict and download next song in background
                 # Skip autoplay for anime - only works for music
                 is_anime = getattr(media, 'req_type', None) == 'anime'
                 if autoplay_status and not queue.get_next(chat_id, check=True) and not is_anime:
+                    # Cancel any existing preload task to prevent duplicates
+                    if chat_id in self._preload_tasks:
+                        old_task = self._preload_tasks[chat_id]
+                        if not old_task.done():
+                            old_task.cancel()
+                            logger.info(f"Cancelled previous preload task for chat {chat_id}")
+                    
                     task = asyncio.create_task(self._preload_next_song(chat_id, media))
                     self._preload_tasks[chat_id] = task
         except FileNotFoundError:
