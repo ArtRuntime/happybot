@@ -52,9 +52,9 @@ except Exception as e:
 def force_google_dns():
     """Force usage of Google DNS to resolve music.youtube.com issues."""
     try:
-        logger.info("Forcing Google DNS (8.8.8.8)...")
+        logger.info("Forcing Cloudflare DNS (1.1.1.1)...")
         dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
-        dns.resolver.default_resolver.nameservers = ["8.8.8.8", "8.8.4.4"]
+        dns.resolver.default_resolver.nameservers = ["1.1.1.1", "1.0.0.1"]
         
         # Patch socket.getaddrinfo to use dnspython
         original_getaddrinfo = socket.getaddrinfo
