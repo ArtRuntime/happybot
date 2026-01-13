@@ -568,11 +568,6 @@ class YouTube:
             "cookiefile": cookie,
             "sleep_interval": 3,
             "max_sleep_interval": 10,
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["tv"],
-                }
-            },
         }
         
         # Use proxy if configured
@@ -582,7 +577,7 @@ class YouTube:
         # Select format
         if video:
             # For video: get best quality video+audio
-            ydl_opts["format"] = "best[ext=mp4]"
+            ydl_opts["format"] = "best"
         else:
             # For audio: get best audio
             # Prefer m4a/opus, fallback to any audio

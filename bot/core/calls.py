@@ -5,9 +5,10 @@
 
 import asyncio
 import os
+from collections import defaultdict
 from ntgcalls import (ConnectionNotFound, TelegramServerError,
                       RTMPStreamingUnsupported)
-from pyrogram.errors import MessageIdInvalid
+from pyrogram.errors import MessageIdInvalid, MessageNotModified
 from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
@@ -19,6 +20,7 @@ from bot.helpers import Media, Track, buttons, thumb, utils
 class TgCall(PyTgCalls):
     def __init__(self):
         self.clients = []
+        self._consecutive_failures: dict[int, int] = defaultdict(int)
 
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
@@ -470,7 +472,14 @@ class TgCall(PyTgCalls):
         await self.play_media(chat_id, msg, media)
 
 
+
     async def play_next(self, chat_id: int) -> None:
+        # Check consecutive failures to prevent loops
+        if self._consecutive_failures[chat_id] >= 3:
+            logger.warning(f"Stopping playback loop in {chat_id} due to 3 consecutive failures")
+            self._consecutive_failures[chat_id] = 0
+            return await self.stop(chat_id)
+
         # Cleanup previous track
         old_media = queue.get_playing(chat_id)
         if old_media:
@@ -482,6 +491,8 @@ class TgCall(PyTgCalls):
                         message_id=old_media.message_id,
                         reply_markup=None
                     )
+                except errors.MessageNotModified:
+                    pass
                 except Exception as e:
                     logger.error(f"Failed to cleanup buttons for {old_media.title}: {e}")
             if old_media.file_path and os.path.exists(old_media.file_path):
@@ -584,10 +595,15 @@ class TgCall(PyTgCalls):
                 # Download for Telegram files or if streaming disabled
                 media.file_path = await yt.download(media.id, video=media.video)
             if not media.file_path:
+                self._consecutive_failures[chat_id] += 1
                 await self.stop(chat_id)
                 return await msg.edit_text(
                     _lang["error_no_file"].format(config.SUPPORT_CHAT)
                 )
+            
+            # Reset failures on success
+            self._consecutive_failures[chat_id] = 0
+
 
         media.message_id = msg.id
         await self.play_media(chat_id, msg, media)
