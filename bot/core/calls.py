@@ -373,6 +373,8 @@ class TgCall(PyTgCalls):
                         ),
                         reply_markup=keyboard,
                     )
+                    # Update message_id to track the edited message
+                    media.message_id = message.id
                 except MessageIdInvalid:
                     media.message_id = (await app.send_photo(
                         chat_id=chat_id,
