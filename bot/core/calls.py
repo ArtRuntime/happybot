@@ -472,7 +472,7 @@ class TgCall(PyTgCalls):
 
     async def play_next(self, chat_id: int) -> None:
         # Cleanup previous track
-        old_media = queue.get_current(chat_id)
+        old_media = queue.get_playing(chat_id)
         if old_media:
             # Disable buttons on previous song message
             if hasattr(old_media, 'message_id') and old_media.message_id:
@@ -483,7 +483,7 @@ class TgCall(PyTgCalls):
                         reply_markup=None
                     )
                 except Exception as e:
-                    pass
+                    logger.error(f"Failed to cleanup buttons for {old_media.title}: {e}")
             if old_media.file_path and os.path.exists(old_media.file_path):
                 try:
                     os.remove(old_media.file_path)
