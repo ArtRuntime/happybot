@@ -618,9 +618,13 @@ class YouTube:
                         # Get duration - check 'length' field (in seconds) from ytmusicapi
                         duration = selected.get("duration") or selected.get("length")
                         if duration and isinstance(duration, int):
-                            mins = duration // 60
+                            hours = duration // 3600
+                            mins = (duration % 3600) // 60
                             secs = duration % 60
-                            duration = f"{mins}:{secs:02d}"
+                            if hours > 0:
+                                duration = f"{hours}:{mins:02d}:{secs:02d}"
+                            else:
+                                duration = f"{mins}:{secs:02d}"
                         else:
                             duration = duration or "0:00"
 
@@ -684,11 +688,15 @@ class YouTube:
             # Get duration - ytmusicapi get_watch_playlist returns 'length' field (in seconds)
             duration = selected.get("duration") or selected.get("length")  # 'length' is in seconds
             
-            # If we have length in seconds, convert to MM:SS
+            # If we have length in seconds, convert to HH:MM:SS or MM:SS
             if duration and isinstance(duration, int):
-                mins = duration // 60
+                hours = duration // 3600
+                mins = (duration % 3600) // 60
                 secs = duration % 60
-                duration = f"{mins}:{secs:02d}"
+                if hours > 0:
+                    duration = f"{hours}:{mins:02d}:{secs:02d}"
+                else:
+                    duration = f"{mins}:{secs:02d}"
             elif not duration or duration == "0:00":
                 # Fallback: use yt-dlp to get duration
                 logger.warning(f"No duration from ytmusicapi, using yt-dlp fallback")
@@ -756,9 +764,13 @@ class YouTube:
                         # Get duration - check 'length' field (in seconds)
                         duration = track.get("duration") or track.get("length")
                         if duration and isinstance(duration, int):
-                            mins = duration // 60
+                            hours = duration // 3600
+                            mins = (duration % 3600) // 60
                             secs = duration % 60
-                            duration = f"{mins}:{secs:02d}"
+                            if hours > 0:
+                                duration = f"{hours}:{mins:02d}:{secs:02d}"
+                            else:
+                                duration = f"{mins}:{secs:02d}"
                         else:
                             duration = duration or "0:00"
 
