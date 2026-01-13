@@ -496,8 +496,8 @@ class TgCall(PyTgCalls):
             if old_media:
                 old_req_type = getattr(old_media, 'req_type', None)
                 
-                # Only allow autoplay for YouTube search, direct YouTube URLs, and previous autoplay tracks
-                if old_req_type not in ['search', 'youtube', 'autoplay']:
+                # Only allow autoplay for YouTube search, direct YouTube URLs, playlists, and previous autoplay tracks
+                if old_req_type not in ['search', 'youtube', 'autoplay', 'playlist']:
                     logger.info(f"Skipping autoplay - req_type '{old_req_type}' not eligible for autoplay")
                     return await self.stop(chat_id)
                 

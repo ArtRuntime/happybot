@@ -165,48 +165,51 @@ class YouTube:
             return None
         
         try:
-            # Search using ytmusicapi
-            filter_type = "videos" if video else "songs"
+            # Search using ytmusicapi (no filter for broad results)
             results = await asyncio.to_thread(
                 self.ytmusic.search,
                 query,
-                # filter=filter_type,  # User requested no filter
-                limit=1
+                limit=10  # Get multiple results to find a playable one
             )
             
-            if results:
-                data = results[0]
-                video_id = data.get("videoId")
-                
-                if not video_id:
-                    logger.warning("No videoId in search result")
-                    return None
-                
-                # Extract artist name
-                artists = data.get("artists", [])
-                channel_name = artists[0].get("name") if artists else "Unknown"
-                
-                # Get duration
-                duration = data.get("duration", "0:00")
-                if not duration:
-                    duration = "0:00"
-                
-                # Get thumbnail - preserve full URL
-                thumbnails = data.get("thumbnails", [])
-                thumbnail = thumbnails[-1].get("url", "") if thumbnails else None
-                
-                return Track(
-                    id=video_id,
-                    channel_name=channel_name,
-                    duration=duration,
-                    duration_sec=utils.to_seconds(duration),
-                    message_id=m_id,
-                    title=data.get("title", "Unknown")[:25],
-                    thumbnail=thumbnail,
-                    url=f"https://www.youtube.com/watch?v={video_id}",
-                    view_count="",
-                    video=video,
-                )
+            # Find first result with a videoId (skip albums, artists, playlists)
+            data = None
+            for result in results:
+                if result.get("videoId"):
+                    data = result
+                    break
+            
+            if not data:
+                logger.warning("No playable result found in search")
+                return None
+
+            video_id = data.get("videoId")
+            
+            # Extract artist name
+            artists = data.get("artists", [])
+            channel_name = artists[0].get("name") if artists else "Unknown"
+            
+            # Get duration
+            duration = data.get("duration", "0:00")
+            if not duration:
+                duration = "0:00"
+            
+            # Get thumbnail - preserve full URL
+            thumbnails = data.get("thumbnails", [])
+            thumbnail = thumbnails[-1].get("url", "") if thumbnails else None
+            
+            return Track(
+                id=video_id,
+                channel_name=channel_name,
+                duration=duration,
+                duration_sec=utils.to_seconds(duration),
+                message_id=m_id,
+                title=data.get("title", "Unknown")[:25],
+                thumbnail=thumbnail,
+                url=f"https://www.youtube.com/watch?v={video_id}",
+                view_count="",
+                video=video,
+            )
         except Exception as e:
             logger.error(f"ytmusicapi search failed: {e}")
         
