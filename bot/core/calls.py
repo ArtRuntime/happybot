@@ -491,7 +491,7 @@ class TgCall(PyTgCalls):
                         message_id=old_media.message_id,
                         reply_markup=None
                     )
-                except errors.MessageNotModified:
+                except MessageNotModified:
                     pass
                 except Exception as e:
                     logger.error(f"Failed to cleanup buttons for {old_media.title}: {e}")
