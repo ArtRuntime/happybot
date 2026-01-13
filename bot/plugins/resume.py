@@ -36,7 +36,7 @@ async def _resume(_, m: types.Message):
         if not _thumb:
             _thumb = config.DEFAULT_THUMB
         
-        text = f"▶️ <u><b>Stream Resumed</b></u>\n\n<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n<b>Duration:</b> {media.duration} min\n<b>Resumed by:</b> {m.from_user.mention}"
+        text = f"▶️ <u><b>Stream Resumed</b></u>\n\n<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n<b>Duration:</b> {media.duration}\n<b>Resumed by:</b> {m.from_user.mention}"
         
         try:
             await app.edit_message_media(

@@ -38,7 +38,6 @@ async def play_hndlr(
     sent = await m.reply_text(m.lang["play_searching"])
     file = None
     mention = m.from_user.mention
-    media = tg.get_media(m.reply_to_message) if m.reply_to_message else None
     tracks = []
 
     if url:
@@ -77,9 +76,39 @@ async def play_hndlr(
                 m.lang["play_not_found"].format(config.SUPPORT_CHAT)
             )
 
-    elif media:
-        setattr(sent, "lang", m.lang)
-        file = await tg.download(m.reply_to_message, sent)
+    # Check if user replied to a message containing a URL
+    elif m.reply_to_message:
+        extracted_url = utils.get_url(m)
+        if extracted_url:
+            # Found a URL in the replied message
+            if "playlist" in extracted_url:
+                await sent.edit_text(m.lang["playlist_fetch"])
+                tracks = await yt.playlist(
+                    config.PLAYLIST_LIMIT, mention, extracted_url, video
+                )
+
+                if not tracks:
+                    return await sent.edit_text(m.lang["playlist_error"])
+
+                file = tracks[0]
+                tracks.remove(file)
+                file.message_id = sent.id
+                file.req_type = "playlist"
+            else:
+                file = await yt.search(extracted_url, sent.id, video=video)
+                if file:
+                    file.req_type = "youtube"
+
+            if not file:
+                return await sent.edit_text(
+                    m.lang["play_not_found"].format(config.SUPPORT_CHAT)
+                )
+        else:
+            # No URL found, check if it's an audio/video file
+            media = tg.get_media(m.reply_to_message)
+            if media:
+                setattr(sent, "lang", m.lang)
+                file = await tg.download(m.reply_to_message, sent)
 
     if not file:
         return await sent.edit_text(m.lang["play_usage"])

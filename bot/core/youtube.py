@@ -189,10 +189,31 @@ class YouTube:
             artists = data.get("artists", [])
             channel_name = artists[0].get("name") if artists else "Unknown"
             
-            # Get duration
-            duration = data.get("duration", "0:00")
-            if not duration:
-                duration = "0:00"
+            # Get duration - parse different formats
+            duration = data.get("duration")
+            duration_seconds = None
+            
+            if isinstance(duration, str) and "min" in duration.lower():
+                try:
+                    mins = int(duration.lower().replace("min", "").strip())
+                    duration_seconds = mins * 60
+                except:
+                    pass
+            elif isinstance(duration, int):
+                duration_seconds = duration
+            elif isinstance(duration, str) and ":" in duration:
+                pass  # Already formatted
+            
+            if duration_seconds:
+                hours = duration_seconds // 3600
+                mins = (duration_seconds % 3600) // 60
+                secs = duration_seconds % 60
+                if hours > 0:
+                    duration = f"{hours}:{mins:02d}:{secs:02d}"
+                else:
+                    duration = f"{mins}:{secs:02d}"
+            else:
+                duration = duration or "0:00"
             
             # Get thumbnail - preserve full URL
             thumbnails = data.get("thumbnails", [])
@@ -259,11 +280,24 @@ class YouTube:
                 track_id = url
                 logger.info(f"Non-YouTube source ({extractor}) - using full URL for download")
 
+            # Get duration from yt-dlp (returns seconds) and format it
+            duration_sec = info.get("duration", 0)
+            if duration_sec:
+                hours = duration_sec // 3600
+                mins = (duration_sec % 3600) // 60
+                secs = duration_sec % 60
+                if hours > 0:
+                    duration = f"{hours}:{mins:02d}:{secs:02d}"
+                else:
+                    duration = f"{mins}:{secs:02d}"
+            else:
+                duration = "0:00"
+
             return Track(
                 id=track_id,  # Use full URL for non-YouTube, short ID for YouTube
                 channel_name=info.get("uploader", "Unknown"),
-                duration=str(info.get("duration", 0)), 
-                duration_sec=info.get("duration", 0),
+                duration=duration,
+                duration_sec=duration_sec,
                 message_id=m_id,
                 title=info.get("title", "Unknown")[:25],
                 thumbnail=info.get("thumbnail"),
@@ -615,12 +649,25 @@ class YouTube:
                         artists = selected.get("artists", [])
                         channel_name = artists[0].get("name") if artists else "Unknown"
                         
-                        # Get duration - check 'length' field (in seconds) from ytmusicapi
+                        # Get duration - parse different formats
                         duration = selected.get("duration") or selected.get("length")
-                        if duration and isinstance(duration, int):
-                            hours = duration // 3600
-                            mins = (duration % 3600) // 60
-                            secs = duration % 60
+                        duration_seconds = None
+                        
+                        if isinstance(duration, str) and "min" in duration.lower():
+                            try:
+                                mins = int(duration.lower().replace("min", "").strip())
+                                duration_seconds = mins * 60
+                            except:
+                                pass
+                        elif isinstance(duration, int):
+                            duration_seconds = duration
+                        elif isinstance(duration, str) and ":" in duration:
+                            pass  # Already formatted
+                        
+                        if duration_seconds:
+                            hours = duration_seconds // 3600
+                            mins = (duration_seconds % 3600) // 60
+                            secs = duration_seconds % 60
                             if hours > 0:
                                 duration = f"{hours}:{mins:02d}:{secs:02d}"
                             else:
@@ -686,13 +733,31 @@ class YouTube:
             channel_name = artists[0].get("name") if artists else "Unknown"
             
             # Get duration - ytmusicapi get_watch_playlist returns 'length' field (in seconds)
-            duration = selected.get("duration") or selected.get("length")  # 'length' is in seconds
+            duration = selected.get("duration") or selected.get("length")
             
-            # If we have length in seconds, convert to HH:MM:SS or MM:SS
-            if duration and isinstance(duration, int):
-                hours = duration // 3600
-                mins = (duration % 3600) // 60
-                secs = duration % 60
+            # Parse duration - handle different formats
+            duration_seconds = None
+            
+            # Case 1: String with 'min' like "3999 min"
+            if isinstance(duration, str) and "min" in duration.lower():
+                try:
+                    mins = int(duration.lower().replace("min", "").strip())
+                    duration_seconds = mins * 60
+                except:
+                    pass
+            # Case 2: Integer (seconds)
+            elif isinstance(duration, int):
+                duration_seconds = duration
+            # Case 3: Already formatted string like "3:45"
+            elif isinstance(duration, str) and ":" in duration:
+                # Keep as is if already formatted
+                pass
+            
+            # Convert seconds to HH:MM:SS or MM:SS format
+            if duration_seconds:
+                hours = duration_seconds // 3600
+                mins = (duration_seconds % 3600) // 60
+                secs = duration_seconds % 60
                 if hours > 0:
                     duration = f"{hours}:{mins:02d}:{secs:02d}"
                 else:
@@ -761,12 +826,25 @@ class YouTube:
                         artists = track.get("artists", [])
                         channel_name = artists[0].get("name") if artists else "Unknown"
                         
-                        # Get duration - check 'length' field (in seconds)
+                        # Get duration - parse different formats
                         duration = track.get("duration") or track.get("length")
-                        if duration and isinstance(duration, int):
-                            hours = duration // 3600
-                            mins = (duration % 3600) // 60
-                            secs = duration % 60
+                        duration_seconds = None
+                        
+                        if isinstance(duration, str) and "min" in duration.lower():
+                            try:
+                                mins = int(duration.lower().replace("min", "").strip())
+                                duration_seconds = mins * 60
+                            except:
+                                pass
+                        elif isinstance(duration, int):
+                            duration_seconds = duration
+                        elif isinstance(duration, str) and ":" in duration:
+                            pass  # Already formatted
+                        
+                        if duration_seconds:
+                            hours = duration_seconds // 3600
+                            mins = (duration_seconds % 3600) // 60
+                            secs = duration_seconds % 60
                             if hours > 0:
                                 duration = f"{hours}:{mins:02d}:{secs:02d}"
                             else:

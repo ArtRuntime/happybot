@@ -131,9 +131,9 @@ async def _controls(_, query: types.CallbackQuery):
             autoplay_status = await db.get_autoplay(chat_id)
             
             if action == "pause" and media:
-                new_caption = f"⏸️ <u><b>Stream Paused</b></u>\n\n<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n<b>Duration:</b> {media.duration} min\n<b>Paused by:</b> {user}"
+                new_caption = f"⏸️ <u><b>Stream Paused</b></u>\n\n<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n<b>Duration:</b> {media.duration}\n<b>Paused by:</b> {user}"
             elif action == "resume" and media:
-                new_caption = f"▶️ <u><b>Stream Resumed</b></u>\n\n<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n<b>Duration:</b> {media.duration} min\n<b>Resumed by:</b> {user}"
+                new_caption = f"▶️ <u><b>Stream Resumed</b></u>\n\n<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n<b>Duration:</b> {media.duration}\n<b>Resumed by:</b> {user}"
             else:
                 # Fallback to old behavior for other cases
                 mtext = re.sub(

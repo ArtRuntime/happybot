@@ -18,12 +18,12 @@ class Utilities:
         if seconds < 60:
             return f"{seconds}s"
         elif seconds < 3600:
-            return f"{seconds // 60}:{seconds % 60:02d} min"
+            return f"{seconds // 60}:{seconds % 60:02d}"
         else:
             h = seconds // 3600
             m = (seconds % 3600) // 60
             s = seconds % 60
-            return f"{h}:{m:02d}:{s:02d} h"
+            return f"{h}:{m:02d}:{s:02d}"
 
     def format_size(self, bytes: int) -> str:
         if bytes >= 1024**3:
@@ -65,16 +65,24 @@ class Utilities:
             messages.append(message_1.reply_to_message)
 
         for message in messages:
-            if message.entities:
+            if message.entities and message.text:
                 for entity in message.entities:
-                    if entity.type in entities:
+                    if entity.type == enums.MessageEntityType.TEXT_LINK:
+                        # TEXT_LINK has .url attribute
                         link = entity.url
                         break
+                    elif entity.type == enums.MessageEntityType.URL:
+                        # URL type needs to extract from message text using offset and length
+                        link = message.text[entity.offset:entity.offset + entity.length]
+                        break
 
-            if message.caption_entities:
+            if message.caption_entities and message.caption:
                 for entity in message.caption_entities:
-                    if entity.type in entities:
+                    if entity.type == enums.MessageEntityType.TEXT_LINK:
                         link = entity.url
+                        break
+                    elif entity.type == enums.MessageEntityType.URL:
+                        link = message.caption[entity.offset:entity.offset + entity.length]
                         break
 
         if link:
