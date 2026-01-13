@@ -69,18 +69,19 @@ class YouTube:
         # Create cookie directory if it doesn't exist
         os.makedirs(self.cookie_dir, exist_ok=True)
         
-        cookies_list = []
+        self.cookies = [] # Reset list
         for file in os.listdir(self.cookie_dir):
             if file.endswith(".txt"):
-                cookies_list.append(f"{self.cookie_dir}/{file}")
+                self.cookies.append(f"{self.cookie_dir}/{file}")
         
-        if not cookies_list:
+        if not self.cookies:
             if not self.warned:
                 self.warned = True
                 logger.warning("Cookies are missing; downloads might fail.")
             return None
             
-        return random.choice(cookies_list)
+        return random.choice(self.cookies)
+
 
     async def save_cookies(self, urls: list[str]) -> None:
         logger.info("Saving cookies/auth...")
@@ -565,6 +566,8 @@ class YouTube:
             "geo_bypass": True,
             "nocheckcertificate": True,
             "cookiefile": cookie,
+            "sleep_interval": 3,
+            "max_sleep_interval": 10,
             "extractor_args": {
                 "youtube": {
                     "player_client": ["tv"],
@@ -615,7 +618,10 @@ class YouTube:
         except Exception as e:
             logger.error(f"Failed to extract stream URL: {e}")
             if cookie:
-                self.cookies.remove(cookie)
+                try:
+                    self.cookies.remove(cookie)
+                except:
+                    pass
             return None
 
     async def smart_autoplay(self, mode: str | bool, previous_track: Track = None) -> Track | None:
