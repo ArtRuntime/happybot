@@ -27,9 +27,9 @@ class Config:
         self.SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/alex5402")
         self.SUPPORT_CHAT = getenv("SUPPORT_CHAT", "https://t.me/alex5402")
 
-        self.AUTO_END: bool = getenv("AUTO_END", False)
-        self.AUTO_LEAVE: bool = getenv("AUTO_LEAVE", False)
-        self.VIDEO_PLAY: bool = getenv("VIDEO_PLAY", True)
+        self.AUTO_END: bool = getenv("AUTO_END", "false").lower() in ("true", "1", "yes")
+        self.AUTO_LEAVE: bool = getenv("AUTO_LEAVE", "false").lower() in ("true", "1", "yes")
+        self.VIDEO_PLAY: bool = getenv("VIDEO_PLAY", "true").lower() in ("true", "1", "yes")
         self.COOKIES_URL = [
             url for url in getenv("COOKIES_URL", "").split(" ")
             if url

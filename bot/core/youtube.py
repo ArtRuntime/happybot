@@ -237,12 +237,30 @@ class YouTube:
             video_id = info.get("id") or url
             
             # Determine req_type for autoplay eligibility
-            req_type = "generic"
-            if "youtube.com" in url or "youtu.be" in url or "music.youtube.com" in url:
-                req_type = "youtube"
+            # Use yt-dlp's extractor info to accurately detect YouTube
+            extractor = info.get("extractor", "").lower()
+            req_type = "generic"  # Default: no autoplay
+            
+            # For YouTube sources, use short video ID; for others, use full URL
+            # This ensures download() uses the correct URL for non-YouTube sources
+            is_youtube = extractor in ["youtube", "youtube:tab", "youtube:playlist"]
+            
+            if is_youtube:
+                # Check if URL is from YouTube (not just YouTube content embedded elsewhere)
+                if "youtube.com" in url or "youtu.be" in url or "music.youtube.com" in url:
+                    req_type = "youtube"
+                    track_id = video_id  # Use short ID for YouTube
+                else:
+                    req_type = "generic"
+                    track_id = url  # Use full URL for embedded YouTube content
+                    logger.info(f"Non-YouTube URL with YouTube content - using full URL")
+            else:
+                # For non-YouTube sources (Instagram, etc.), always use original URL
+                track_id = url
+                logger.info(f"Non-YouTube source ({extractor}) - using full URL for download")
 
             return Track(
-                id=video_id,  # Use video ID instead of full URL
+                id=track_id,  # Use full URL for non-YouTube, short ID for YouTube
                 channel_name=info.get("uploader", "Unknown"),
                 duration=str(info.get("duration", 0)), 
                 duration_sec=info.get("duration", 0),
