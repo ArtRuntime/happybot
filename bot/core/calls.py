@@ -332,6 +332,7 @@ class TgCall(PyTgCalls):
             if not seek_time:
                 media.time = 1
                 await db.add_call(chat_id)
+                self._consecutive_failures[chat_id] = 0
                 
                 # Track this song for building recommendation dataset
                 try:
@@ -441,6 +442,8 @@ class TgCall(PyTgCalls):
 
             # Don't auto-play next for anime failures
             if getattr(media, 'req_type', None) != 'anime':
+                # Increment failure counter to prevent infinite loops
+                self._consecutive_failures[chat_id] += 1
                 await message.edit_text(_lang["error_no_audio"])
                 await self.play_next(chat_id)
             else:
