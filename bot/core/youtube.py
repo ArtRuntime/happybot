@@ -615,6 +615,16 @@ class YouTube:
                         artists = selected.get("artists", [])
                         channel_name = artists[0].get("name") if artists else "Unknown"
                         
+                        # Get duration - check 'length' field (in seconds) from ytmusicapi
+                        duration = selected.get("duration") or selected.get("length")
+                        if duration and isinstance(duration, int):
+                            mins = duration // 60
+                            secs = duration % 60
+                            duration = f"{mins}:{secs:02d}"
+                        else:
+                            duration = duration or "0:00"
+
+                        
                         # Thumbnail - preserve full URL
                         thumbnails = selected.get("thumbnails", [])
                         thumbnail = thumbnails[-1].get("url", "") if thumbnails else None
@@ -622,8 +632,8 @@ class YouTube:
                         return Track(
                             id=video_id,
                             channel_name=channel_name,
-                            duration=selected.get("duration", "0:00"),
-                            duration_sec=utils.to_seconds(selected.get("duration", "0:00")),
+                            duration=duration,
+                            duration_sec=utils.to_seconds(duration),
                             title=selected.get("title", "Unknown")[:25],
                             thumbnail=thumbnail,
                             url=f"https://www.youtube.com/watch?v={video_id}",
@@ -671,10 +681,32 @@ class YouTube:
             artists = selected.get("artists", [])
             channel_name = artists[0].get("name") if artists else "Unknown"
             
-            # Get duration
-            duration = selected.get("duration", "0:00")
-            if not duration:
-                duration = "0:00"
+            # Get duration - ytmusicapi get_watch_playlist returns 'length' field (in seconds)
+            duration = selected.get("duration") or selected.get("length")  # 'length' is in seconds
+            
+            # If we have length in seconds, convert to MM:SS
+            if duration and isinstance(duration, int):
+                mins = duration // 60
+                secs = duration % 60
+                duration = f"{mins}:{secs:02d}"
+            elif not duration or duration == "0:00":
+                # Fallback: use yt-dlp to get duration
+                logger.warning(f"No duration from ytmusicapi, using yt-dlp fallback")
+                try:
+                    ydl_opts = {"quiet": True, "no_warnings": True}
+                    video_url = f"https://www.youtube.com/watch?v={video_id}"
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
+                        if info and info.get("duration"):
+                            duration_sec = info.get("duration")
+                            mins = duration_sec // 60
+                            secs = duration_sec % 60
+                            duration = f"{mins}:{secs:02d}"
+                        else:
+                            duration = "0:00"
+                except Exception as e:
+                    logger.error(f"yt-dlp duration fallback failed: {e}")
+                    duration = "0:00"
             
             # Get thumbnail - preserve full URL
             thumbnails = selected.get("thumbnails", [])
@@ -721,10 +753,15 @@ class YouTube:
                         artists = track.get("artists", [])
                         channel_name = artists[0].get("name") if artists else "Unknown"
                         
-                        # Get duration
-                        duration = track.get("duration", "0:00")
-                        if not duration:
-                            duration = "0:00"
+                        # Get duration - check 'length' field (in seconds)
+                        duration = track.get("duration") or track.get("length")
+                        if duration and isinstance(duration, int):
+                            mins = duration // 60
+                            secs = duration % 60
+                            duration = f"{mins}:{secs:02d}"
+                        else:
+                            duration = duration or "0:00"
+
                         
                         # Get thumbnail - preserve full URL
                         thumbnails = track.get("thumbnails", [])
