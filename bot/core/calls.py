@@ -464,6 +464,16 @@ class TgCall(PyTgCalls):
         # Cleanup previous track
         old_media = queue.get_current(chat_id)
         if old_media:
+            # Disable buttons on previous song message
+            if hasattr(old_media, 'message_id') and old_media.message_id:
+                try:
+                    await app.edit_message_reply_markup(
+                        chat_id=chat_id,
+                        message_id=old_media.message_id,
+                        reply_markup=None
+                    )
+                except Exception as e:
+                    pass
             if old_media.file_path and os.path.exists(old_media.file_path):
                 try:
                     os.remove(old_media.file_path)
@@ -523,6 +533,15 @@ class TgCall(PyTgCalls):
                         pass
                     # Do NOT recurse. Proceed to play loop below.
                 else:
+                    # Autoplay failed - notify user
+                    logger.warning(f"Autoplay failed to fetch next track for chat {chat_id}")
+                    try:
+                        await app.send_message(
+                            chat_id=chat_id,
+                            text="⚠️ <b>Autoplay failed</b>\n\nCouldn't fetch the next song. Playback stopped."
+                        )
+                    except:
+                        pass
                     return await self.stop(chat_id)
             else:
                 return await self.stop(chat_id)
