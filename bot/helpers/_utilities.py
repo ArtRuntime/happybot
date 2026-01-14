@@ -3,6 +3,7 @@
 # This file is part of happybot
 
 
+import asyncio
 import re
 
 from pyrogram import enums, types
@@ -14,6 +15,27 @@ class Utilities:
     def __init__(self):
         pass
 
+    async def get_duration(self, file_path: str) -> int:
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                file_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await process.communicate()
+            if process.returncode != 0:
+                return 0
+            return int(float(stdout.decode().strip()))
+        except:
+            return 0
+            
     def format_eta(self, seconds: int) -> str:
         if seconds < 60:
             return f"{seconds}s"
@@ -47,8 +69,15 @@ class Utilities:
         
         # Format times
         def fmt(sec):
-            m, s = divmod(int(sec), 60)
-            return f"{m:02d}:{s:02d}"
+            sec = int(sec)
+            if sec < 3600:
+                m, s = divmod(sec, 60)
+                return f"{m:02d}:{s:02d}"
+            else:
+                h = sec // 3600
+                m = (sec % 3600) // 60
+                s = sec % 60
+                return f"{h}:{m:02d}:{s:02d}"
             
         current_str = fmt(current)
         remain_str = fmt(total - current)

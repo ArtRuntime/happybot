@@ -13,6 +13,7 @@ WORKDIR /app
 RUN apt-get update -y && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
     ffmpeg \
+    ffprobe \
     curl \
     p7zip-full \
     7zip \

@@ -24,6 +24,19 @@ class Telegram:
     def get_media(self, msg: types.Message) -> bool:
         return any([msg.video, msg.audio, msg.document, msg.voice])
 
+    async def get_url(self, file_id: str, file_size: int) -> str | None:
+        """Get direct stream URL if file is small enough (<20MB)"""
+        # Telegram Bot API Limit for getFile is 20MB
+        if file_size > 20_971_520:
+            return None
+        
+        try:
+            from bot import app
+            file = await app.get_file(file_id)
+            return f"https://api.telegram.org/file/bot{config.BOT_TOKEN}/{file.file_path}"
+        except:
+            return None
+
     async def download(self, msg: types.Message, sent: types.Message) -> Media | None:
         msg_id = sent.id
         event = asyncio.Event()
@@ -40,6 +53,24 @@ class Telegram:
         video = bool(getattr(media, "mime_type", "").startswith("video/"))
 
         # No duration limit for Telegram files (live streams don't apply here)
+
+        # Try to get direct stream URL first (if file < 20MB)
+        direct_url = await self.get_url(file_id, file_size)
+        if direct_url:
+            if not duration:
+                duration = await utils.get_duration(direct_url)
+            
+            return Media(
+                id=file_id,
+                duration=time.strftime("%M:%S", time.gmtime(duration)) if duration < 3600 else time.strftime("%H:%M:%S", time.gmtime(duration)),
+                duration_sec=duration,
+                file_path=direct_url,
+                message_id=sent.id,
+                url=msg.link,
+                title=file_title[:25],
+                video=video,
+                req_type="telegram"
+            )
 
         async def progress(current, total):
             if event.is_set():
@@ -84,9 +115,12 @@ class Telegram:
                     sent.lang["dl_complete"].format(round(time.time() - start_time, 2))
                 )
 
+            if not duration:
+                duration = await utils.get_duration(file_path)
+
             return Media(
                 id=file_id,
-                duration=time.strftime("%M:%S", time.gmtime(duration)),
+                duration=time.strftime("%M:%S", time.gmtime(duration)) if duration < 3600 else time.strftime("%H:%M:%S", time.gmtime(duration)),
                 duration_sec=duration,
                 file_path=file_path,
                 message_id=sent.id,
