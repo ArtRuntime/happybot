@@ -14,7 +14,7 @@ from datetime import datetime
 
 from ytmusicapi import YTMusic
 
-from bot import logger, config
+from bot import logger, config, db
 from bot.helpers import Track, utils
 
 
@@ -553,25 +553,9 @@ class YouTube:
             "nocheckcertificate": True,
             "cookiefile": cookie,
             "logger": self.YtDlpLogger(),  # Use custom logger
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["tv"],
-                }
-            },
+
         }
         
-        # Add headers for anime streams to bypass 403 Forbidden
-        # Check for common anime CDN domains or any stream URL with master.m3u8
-        is_anime_stream = (
-            "rainveil" in url or "stormshade" in url or "haildrop" in url or 
-            "anime" in url.lower() or "master.m3u8" in url or "/m3u8" in url
-        )
-        if is_anime_stream:
-            base_opts["http_headers"] = {
-                "Referer": "https://hianime.to/",
-                "Origin": "https://hianime.to",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
 
         if video:
             ydl_opts = {
@@ -661,6 +645,15 @@ class YouTube:
 
         return await asyncio.to_thread(_download)
     
+    async def _check_url_alive(self, url: str) -> bool:
+        """Passive check if URL is reachable via HEAD request."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.head(url, timeout=5, allow_redirects=True) as resp:
+                    return resp.status in [200, 302]
+        except:
+            return False
+
     async def get_stream_url(self, video_id: str, video: bool = False) -> str | None:
         """
         Get direct stream URL without downloading (for instant playback).
@@ -676,6 +669,38 @@ class YouTube:
             url = video_id
         else:
             url = self.base + video_id
+            
+        # ---------------------------------------------------------
+        # 1. MongoDB Cache Check
+        # ---------------------------------------------------------
+        try:
+            # Use video_id as key if it's not a URL, else hash or use full URL
+            # For simplicity, we only cache strictly by video ID if available
+            cache_key = video_id if not video_id.startswith("http") else None
+            
+            if cache_key:
+                cached = await db.get_stream_cache(cache_key)
+                if cached:
+                    import time
+                    expire = cached.get("expire", 0)
+                    now = int(time.time())
+                    
+                    # Check URL expiration (with 5 min buffer)
+                    if expire > (now + 300):
+                        # Verify liveness passively
+                        if await self._check_url_alive(cached["url"]):
+                            logger.info(f"✅ Using cached stream URL for {video_id}")
+                            return cached["url"]
+                        else:
+                            logger.warning(f"Cached URL dead for {video_id}, refreshing...")
+                    else:
+                        logger.info(f"Cached URL expired for {video_id}, refreshing...")
+        except Exception as e:
+            logger.error(f"Cache check failed: {e}")
+            
+        # ---------------------------------------------------------
+        # 2. Extract New URL
+        # ---------------------------------------------------------
         
         cookie = self.get_cookies()
         ydl_opts = {
@@ -760,8 +785,22 @@ class YouTube:
                 stream_url = info.get('url')
                 
                 if not stream_url:
-                    logger.error("No stream URL found in video info")
+                    logger.error("Could not find suitable stream URL")
                     return None
+                    
+                # ---------------------------------------------------------
+                # 3. Save to Cache
+                # ---------------------------------------------------------
+                try:
+                    import re
+                    # Extract 'expire' timestamp from URL
+                    match = re.search(r'expire=(\d+)', stream_url)
+                    if match and not video_id.startswith("http"):
+                        expire = int(match.group(1))
+                        await db.add_stream_cache(video_id, stream_url, expire)
+                        logger.info(f"💾 Saved stream URL to cache for {video_id} (Expires: {expire})")
+                except Exception as e:
+                    logger.error(f"Failed to save cache: {e}")
                 
                 logger.info(f"✅ Stream URL extracted (expires in ~6 hours)")
                 return stream_url

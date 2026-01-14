@@ -48,7 +48,12 @@ class MongoDB:
         
         # Sessions collection for dynamic assistant management
         self.sessions = []
+        # Sessions collection for dynamic assistant management
+        self.sessions = []
         self.sessionsdb = self.db.sessions
+        
+        # Stream URL Cache
+        self.stream_cache = self.db.stream_cache
 
     async def connect(self) -> None:
         """Check if we can connect to the database.
@@ -426,3 +431,21 @@ class MongoDB:
         await self.get_logger()
         await self.get_sessions()  # Load sessions into cache
         logger.info("Database cache loaded.")
+
+    # STREAM CACHE METHODS
+    async def add_stream_cache(self, video_id: str, url: str, expire: int) -> None:
+        """
+        Cache a stream URL with its expiration timestamp.
+        """
+        await self.stream_cache.update_one(
+            {"_id": video_id},
+            {"$set": {"url": url, "expire": expire}},
+            upsert=True
+        )
+
+    async def get_stream_cache(self, video_id: str) -> dict | None:
+        """
+        Get cached stream URL if it exists.
+        Returns dict with 'url' and 'expire' or None.
+        """
+        return await self.stream_cache.find_one({"_id": video_id})
