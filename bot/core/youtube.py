@@ -508,13 +508,17 @@ class YouTube:
             url = video_id
             safe_id = video_id.split("/")[-1].split("?")[0]
             if len(safe_id) > 20: safe_id = safe_id[:20]
-            filename = f"downloads/{safe_id}.mp4"
+            file_name_base = safe_id
         else:
             url = self.base + video_id
-            filename = f"downloads/{video_id}.mp4"
+            file_name_base = video_id
 
-        if Path(filename).exists():
-            return filename
+        # Check for existing file with any common extension
+        import os
+        for ext in [".mp4", ".mkv", ".webm", ".m4a", ".mp3"]:
+             path = f"downloads/{file_name_base}{ext}"
+             if Path(path).exists():
+                 return path
 
         # ---------------------------------------------------------
         # yt-dlp Download (Primary Method)
@@ -522,7 +526,7 @@ class YouTube:
 
         cookie = self.get_cookies()
         base_opts = {
-            "outtmpl": filename,
+            "outtmpl": f"downloads/{file_name_base}.%(ext)s",
             "quiet": False,
             "noplaylist": True,
             "geo_bypass": True,
@@ -538,13 +542,13 @@ class YouTube:
         if video:
             ydl_opts = {
                 **base_opts,
-                "format": "best[ext=mp4]",
-                "merge_output_format": "mp4",
+                "format": "bestvideo+bestaudio/best",
+                # Remove merge_output_format to allow best native container (mkv/webm/mp4)
             }
         else:
             ydl_opts = {
                 **base_opts,
-                "format": "best",
+                "format": "bestaudio/best",
             }
 
         def _download():
@@ -575,14 +579,22 @@ class YouTube:
                 logger.info(f"Using options: {ydl_opts}")
                 
                 # Try primary download
+                downloaded_path = None
                 try:
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([url])
+                        
+                    # Find the downloaded file
+                    for file in os.listdir("downloads"):
+                        if file.startswith(file_name_base):
+                            downloaded_path = f"downloads/{file}"
+                            break
+                            
+                    return downloaded_path
                 except Exception as ex:
                     # Check for Sign in error and retry with fallback
                     if "Sign in to confirm" in str(ex):
                         fallback = self._get_fallback_cookie()
-                        success = False
                         
                         if fallback:
                             logger.warning("Primary cookie failed with Sign-in error. Retrying with fallback cookie...")
@@ -591,7 +603,11 @@ class YouTube:
                                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                                     ydl.download([url])
                                 logger.info("✅ Fallback cookie success!")
-                                return filename
+                                
+                                # Find file
+                                for file in os.listdir("downloads"):
+                                    if file.startswith(file_name_base):
+                                        return f"downloads/{file}"
                             except Exception as ex2:
                                 logger.error(f"Fallback cookie also failed: {ex2}")
                                 if "Sign in to confirm" not in str(ex2):
@@ -608,7 +624,10 @@ class YouTube:
                             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                                 ydl.download([url])
                             logger.info("✅ Cookie-less fallback success!")
-                            return filename
+                            # Find file
+                            for file in os.listdir("downloads"):
+                                if file.startswith(file_name_base):
+                                    return f"downloads/{file}"
                         except Exception as ex3:
                             logger.error(f"Cookie-less fallback failed: {ex3}")
                             return None
