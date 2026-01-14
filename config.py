@@ -12,7 +12,7 @@ class Config:
         self.MONGO_URL = getenv("MONGO_URL")
         self.MONGO_DB_NAME = getenv("MONGO_DB_NAME", "HappyBot")
         self.REDIS_URL = getenv("REDIS_URL")
-        self.REDIS_PREFIX = getenv("REDIS_PREFIX", "happybot")
+        self.REDIS_PREFIX = getenv("REDIS_PREFIX", "happybot-")
 
         self.LOGGER_ID = int(getenv("LOGGER_ID", 0))
         self.OWNER_ID = int(getenv("OWNER_ID", 0))
