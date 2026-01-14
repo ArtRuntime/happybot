@@ -49,7 +49,7 @@ async def track_time():
         for chat_id in list(db.active_calls):
             if not await db.playing(chat_id):
                 continue
-            media = queue.get_current(chat_id)
+            media = await queue.get_current(chat_id)
             if not media:
                 continue
             media.time += 1
@@ -62,7 +62,7 @@ async def update_timer(length=10):
             if not await db.playing(chat_id):
                 continue
             try:
-                media = queue.get_current(chat_id)
+                media = await queue.get_current(chat_id)
                 duration, message_id = media.duration_sec, media.message_id
                 if not duration or not message_id or not media.time:
                     continue
@@ -72,7 +72,7 @@ async def update_timer(length=10):
                 timer = "—" * pos + "◉" + "—" * (length - pos - 1)
 
                 if remaining <= 30:
-                    next = queue.get_next(chat_id, check=True)
+                    next = await queue.get_next(chat_id, check=True)
                     if next and not next.file_path:
                         next.file_path = await yt.download(next.id, video=next.video)
 
@@ -104,7 +104,7 @@ async def vc_watcher(sleep=15):
         for chat_id in list(db.active_calls):
             try:
                 client = await db.get_assistant(chat_id)
-                media = queue.get_current(chat_id)
+                media = await queue.get_current(chat_id)
                 if not media:
                     continue
                     

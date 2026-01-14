@@ -19,6 +19,7 @@ class Media:
     user: str = None
     video: bool = False
     req_type: str = None
+    played_at: float = 0
 
 
 @dataclass
@@ -37,3 +38,4 @@ class Track:
     view_count: str = None
     video: bool = False
     req_type: str = None
+    played_at: float = 0

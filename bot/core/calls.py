@@ -47,7 +47,7 @@ class TgCall(PyTgCalls):
                 pass
         
         # Cleanup current song and update UI
-        media = queue.get_current(chat_id)
+        media = await queue.get_current(chat_id)
         if media:
             # Update player message to "Stopped" state
             if media.message_id:
@@ -82,7 +82,7 @@ class TgCall(PyTgCalls):
                     pass
         
         # Cleanup ALL queued songs (including preloaded/cached ones)
-        all_queued = queue.get_queue(chat_id)
+        all_queued = await queue.get_queue(chat_id)
         if all_queued:
             for item in all_queued:
                 if item.file_path and os.path.exists(item.file_path):
@@ -100,7 +100,7 @@ class TgCall(PyTgCalls):
                         pass
 
         try:
-            queue.clear(chat_id)
+            await queue.clear(chat_id)
             await db.remove_call(chat_id)
         except:
             pass
@@ -212,8 +212,8 @@ class TgCall(PyTgCalls):
                 return
             
             # Add to queue (if still no next song and call is active)
-            if await db.get_call(chat_id) and not queue.get_next(chat_id, check=True):
-                queue.add(chat_id, next_track)
+            if await db.get_call(chat_id) and not await queue.get_next(chat_id, check=True):
+                await queue.add(chat_id, next_track)
                 logger.info(f"Autoplay preload: Queued '{next_track.title}' for chat {chat_id}")
             else:
                 # If call ended or song already in queue, cleanup the downloaded file
@@ -330,7 +330,11 @@ class TgCall(PyTgCalls):
             await client.resume(chat_id)
             await db.playing(chat_id, paused=False)
             if not seek_time:
-                media.time = 1
+                media.time = 0
+                import time
+                media.played_at = time.time()
+                await queue.update_current(chat_id, media)
+
                 await db.add_call(chat_id)
                 self._consecutive_failures[chat_id] = 0
                 
@@ -390,7 +394,7 @@ class TgCall(PyTgCalls):
                 # Proactive autoplay preload - predict and download next song in background
                 # Skip autoplay for anime - only works for music
                 is_anime = getattr(media, 'req_type', None) == 'anime'
-                if autoplay_status and not queue.get_next(chat_id, check=True) and not is_anime:
+                if autoplay_status and not await queue.get_next(chat_id, check=True) and not is_anime:
                     # Cancel any existing preload task to prevent duplicates
                     if chat_id in self._preload_tasks:
                         old_task = self._preload_tasks[chat_id]
@@ -469,7 +473,7 @@ class TgCall(PyTgCalls):
         if not await db.get_call(chat_id):
             return
 
-        media = queue.get_current(chat_id)
+        media = await queue.get_current(chat_id)
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
         await self.play_media(chat_id, msg, media)
@@ -484,7 +488,7 @@ class TgCall(PyTgCalls):
             return await self.stop(chat_id)
 
         # Cleanup previous track
-        old_media = queue.get_playing(chat_id)
+        old_media = await queue.get_playing(chat_id)
         if old_media:
             # Disable buttons on previous song message
             if hasattr(old_media, 'message_id') and old_media.message_id:
@@ -512,7 +516,7 @@ class TgCall(PyTgCalls):
                 except:
                     pass
 
-        media = queue.get_next(chat_id)
+        media = await queue.get_next(chat_id)
         try:
             if media.message_id:
                 await app.delete_messages(
@@ -548,12 +552,12 @@ class TgCall(PyTgCalls):
                 
                 # Check if user added a song while we were fetching autoplay
                 # If yes, prioritize user song and discard/ignore the autoplay result
-                if queue.get_queue(chat_id):
+                if await queue.get_queue(chat_id):
                     logger.info(f"User added song during autoplay fetch in {chat_id} - Switching to user track")
-                    media = queue.get_next(chat_id)
+                    media = await queue.get_next(chat_id)
                 elif new_track:
                     # Add to queue
-                    queue.add(chat_id, new_track)
+                    await queue.add(chat_id, new_track)
                     media = new_track # Set media to the new track
                     
                     # Notify user about autoplay
@@ -613,6 +617,7 @@ class TgCall(PyTgCalls):
 
 
         media.message_id = msg.id
+        await queue.update_current(chat_id, media)
         await self.play_media(chat_id, msg, media)
 
 

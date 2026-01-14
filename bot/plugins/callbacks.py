@@ -32,6 +32,15 @@ async def _controls(_, query: types.CallbackQuery):
 
     if action == "status":
         return await query.answer()
+        
+    # Check if the button click is from the current player message
+    current = await queue.get_current(chat_id)
+    if not current:
+        return await query.answer(query.lang["not_playing"], show_alert=True)
+        
+    # Skip check for force/queue actions as they might be from other messages
+    if action not in ["force", "autoplay"] and getattr(current, "message_id", 0) != query.message.id:
+        return await query.answer("❌ This control panel is expired.", show_alert=True)
     
     
     # Handle autoplay toggle - show menu to select mode/genre
@@ -75,13 +84,14 @@ async def _controls(_, query: types.CallbackQuery):
 
     elif action == "force":
         position = int(args[3])  # Now it's a position, not item_id
-        media = queue.get_queue(chat_id)[position] if position < len(queue.get_queue(chat_id)) else None
+        _q = await queue.get_queue(chat_id)
+        media = _q[position] if position < len(_q) else None
         
         if not media:
             return await query.edit_message_text(query.lang["play_expired"])
 
-        m_id = queue.get_current(chat_id).message_id
-        queue.force_add(chat_id, media, remove=position)
+        m_id = (await queue.get_current(chat_id)).message_id
+        await queue.force_add(chat_id, media, remove=position)
         try:
             await app.delete_messages(
                 chat_id=chat_id, message_ids=[m_id, media.message_id], revoke=True
@@ -110,7 +120,7 @@ async def _controls(_, query: types.CallbackQuery):
         return await anon.play_media(chat_id, msg, media)
 
     elif action == "replay":
-        media = queue.get_current(chat_id)
+        media = await queue.get_current(chat_id)
         media.user = user
         await anon.replay(chat_id)
         status = query.lang["replayed"]
@@ -127,7 +137,7 @@ async def _controls(_, query: types.CallbackQuery):
             await query.message.delete()
         else:
             # Get current media for updated caption
-            media = queue.get_current(chat_id)
+            media = await queue.get_current(chat_id)
             autoplay_status = await db.get_autoplay(chat_id)
             
             if action == "pause" and media:

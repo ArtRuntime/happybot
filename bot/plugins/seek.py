@@ -36,7 +36,7 @@ async def _seek(_, m: types.Message):
     if not await db.playing(m.chat.id):
         return await m.reply_text(m.lang["play_already_paused"])
 
-    media = queue.get_current(m.chat.id)
+    media = await queue.get_current(m.chat.id)
     if not media.duration_sec:
         return await m.reply_text(m.lang["play_seek_no_dur"])
 

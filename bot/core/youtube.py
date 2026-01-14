@@ -542,6 +542,10 @@ class YouTube:
         if Path(filename).exists():
             return filename
 
+        # ---------------------------------------------------------
+        # yt-dlp Download (Primary Method)
+        # ---------------------------------------------------------
+
         cookie = self.get_cookies()
         base_opts = {
             "outtmpl": filename,
@@ -637,13 +641,33 @@ class YouTube:
                     
                     logger.error(f"yt-dlp Execution Error: {ex}")
                     if cookie: self.cookies.remove(cookie)
-                    return None
+                    
             except Exception as e:
                 logger.error(f"yt-dlp Initialization Error: {e}")
-                return None
-            return filename
 
-        return await asyncio.to_thread(_download)
+            return None
+
+        # Run yt-dlp in thread
+        file_path = await asyncio.to_thread(_download)
+        
+        if file_path:
+            return file_path
+
+        # ---------------------------------------------------------
+        # InnerTube Download (Fallback)
+        # ---------------------------------------------------------
+        if not video_id.startswith("http"):
+            try:
+                from .innertube import innertube
+                logger.info(f"yt-dlp failed using InnerTube Fallback for {video_id}...")
+                path = await innertube.download(video_id, filename)
+                if path:
+                    logger.info(f"✅ InnerTube Fallback Success: {path}")
+                    return path
+            except Exception as e:
+                logger.error(f"InnerTube Fallback Error: {e}")
+
+        return None
     
     async def _check_url_alive(self, url: str) -> bool:
         """Passive check if URL is reachable via HEAD request."""
@@ -697,9 +721,9 @@ class YouTube:
                         logger.info(f"Cached URL expired for {video_id}, refreshing...")
         except Exception as e:
             logger.error(f"Cache check failed: {e}")
-            
+
         # ---------------------------------------------------------
-        # 2. Extract New URL
+        # 2. Extract New URL (Primary: yt-dlp)
         # ---------------------------------------------------------
         
         cookie = self.get_cookies()
@@ -812,7 +836,20 @@ class YouTube:
                     self.cookies.remove(cookie)
                 except:
                     pass
-            return None
+            if cookie:
+                try:
+                    self.cookies.remove(cookie)
+                except:
+                    pass
+
+        if not video_id.startswith("http"):
+            if cookie:
+                try:
+                    self.cookies.remove(cookie)
+                except:
+                    pass
+
+        return None
 
     async def smart_autoplay(self, mode: str | bool, previous_track: Track = None) -> Track | None:
         """

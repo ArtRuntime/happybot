@@ -15,3 +15,6 @@ rmsession - Remove an assistant session (sudo only)
 sessions - List all active assistants (sudo only)
 ping - Check bot latency and status
 stats - Show bot statistics
+forceplay - Force play a track
+forcevplay - Force play a video
+addfallback - Add a fallback Cookie file

@@ -7,7 +7,7 @@ from bot.helpers import _admins, buttons
 async def update_player_button(chat_id: int, autoplay_status):
     """Update the autoplay button in the currently playing song's message."""
     try:
-        media = queue.get_current(chat_id)
+        media = await queue.get_current(chat_id)
         if media and media.message_id:
             keyboard = buttons.controls(chat_id, autoplay=autoplay_status)
             await app.edit_message_reply_markup(

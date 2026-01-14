@@ -37,7 +37,7 @@ async def _autoplay_set(_, query: types.CallbackQuery):
 async def _autoplay_close(_, query: types.CallbackQuery):
     # Get current playing info to restore controls
     chat_id = query.message.chat.id
-    current = queue.get_current(chat_id)
+    current = await queue.get_current(chat_id)
     
     if current:
         autoplay_status = await db.get_autoplay(chat_id)

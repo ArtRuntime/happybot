@@ -7,7 +7,7 @@ from pyrogram import filters, types
 from pyrogram.types import InputMediaPhoto
 
 from bot import anon, app, config, db, lang, queue
-from bot.helpers import buttons, can_manage_vc, thumb
+from bot.helpers import buttons, can_manage_vc, thumb, utils
 
 
 @app.on_message(filters.command(["resume"]) & filters.group & ~app.bl_users)
@@ -30,7 +30,40 @@ async def _resume(_, m: types.Message):
         pass
     
     # Get current media to edit player message
-    media = queue.get_current(m.chat.id)
+    media = await queue.get_current(m.chat.id)
+    if media:
+        # Restore the played_at timestamp from the saved elapsed time
+        # so seekbar continues correctly
+        import time
+        elapsed = media.time if media.time else 0
+        
+        # Verify duration
+        try:
+            duration_sec = utils.to_seconds(media.duration)
+        except:
+            duration_sec = 0
+
+        # Clamp elapsed to prevent overflows/garbage
+        if elapsed < 0: elapsed = 0
+        if duration_sec > 0 and elapsed > duration_sec: elapsed = duration_sec
+
+        media.played_at = time.time() - elapsed
+        await queue.update_current(m.chat.id, media)
+        
+        # Generate timer string safely
+        try:
+            timer = utils.make_progress_bar(elapsed, duration_sec)
+        except Exception as e:
+            from bot import logger
+            logger.error(f"Timer generation failed: {e}")
+            timer = None
+            
+        from bot import logger
+        logger.info(f"Resume Debug: duration={media.duration} ({duration_sec}s) elapsed={elapsed} timer='{timer}'")
+    else:
+        elapsed = 0
+        timer = None
+
     if media and media.message_id:
         _thumb = await thumb.generate(media)
         if not _thumb:
@@ -43,16 +76,28 @@ async def _resume(_, m: types.Message):
                 chat_id=m.chat.id,
                 message_id=media.message_id,
                 media=InputMediaPhoto(media=_thumb, caption=text),
-                reply_markup=buttons.controls(m.chat.id, autoplay=autoplay_status),
+                reply_markup=buttons.controls(
+                    chat_id=m.chat.id, 
+                    autoplay=autoplay_status,
+                    timer=timer
+                ),
             )
         except:
             # Fallback to reply if edit fails
             await m.reply_text(
                 text=m.lang["play_resumed"].format(m.from_user.mention),
-                reply_markup=buttons.controls(m.chat.id, autoplay=autoplay_status),
+                reply_markup=buttons.controls(
+                    chat_id=m.chat.id, 
+                    autoplay=autoplay_status,
+                    timer=timer
+                ),
             )
     else:
         await m.reply_text(
             text=m.lang["play_resumed"].format(m.from_user.mention),
-            reply_markup=buttons.controls(m.chat.id, autoplay=autoplay_status),
+            reply_markup=buttons.controls(
+                chat_id=m.chat.id, 
+                autoplay=autoplay_status,
+                timer=timer
+            ),
         )

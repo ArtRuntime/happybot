@@ -7,7 +7,7 @@ from pyrogram import filters, types
 from pyrogram.types import InputMediaPhoto
 
 from bot import anon, app, config, db, lang, queue
-from bot.helpers import buttons, can_manage_vc, thumb
+from bot.helpers import buttons, can_manage_vc, thumb, utils
 
 
 @app.on_message(filters.command(["pause"]) & filters.group & ~app.bl_users)
@@ -30,7 +30,17 @@ async def _pause(_, m: types.Message):
         pass
     
     # Get current media to edit player message
-    media = queue.get_current(m.chat.id)
+    media = await queue.get_current(m.chat.id)
+    if media:
+        # Calculate elapsed time and save it so we can resume correctly
+        import time
+        if media.played_at:
+            elapsed = int(time.time() - media.played_at)
+            media.time = elapsed
+            await queue.update_current(m.chat.id, media)
+        else:
+            elapsed = 0
+
     if media and media.message_id:
         _thumb = await thumb.generate(media)
         if not _thumb:
@@ -43,13 +53,22 @@ async def _pause(_, m: types.Message):
                 chat_id=m.chat.id,
                 message_id=media.message_id,
                 media=InputMediaPhoto(media=_thumb, caption=text),
-                reply_markup=buttons.controls(m.chat.id, status=m.lang["paused"], autoplay=autoplay_status),
+                reply_markup=buttons.controls(
+                    chat_id=m.chat.id, 
+                    status=m.lang["paused"], 
+                    autoplay=autoplay_status,
+                    timer=utils.make_progress_bar(elapsed, utils.to_seconds(media.duration))
+                ),
             )
         except:
             # Fallback to reply if edit fails
             await m.reply_text(
                 text=m.lang["play_paused"].format(m.from_user.mention),
-                reply_markup=buttons.controls(m.chat.id, autoplay=autoplay_status),
+                reply_markup=buttons.controls(
+                    chat_id=m.chat.id, 
+                    autoplay=autoplay_status,
+                    timer=utils.make_progress_bar(elapsed, utils.to_seconds(media.duration))
+                ),
             )
     else:
         await m.reply_text(

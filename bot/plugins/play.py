@@ -12,10 +12,10 @@ from bot.helpers import buttons, utils
 from bot.helpers._play import checkUB
 
 
-def playlist_to_queue(chat_id: int, tracks: list) -> str:
+async def playlist_to_queue(chat_id: int, tracks: list) -> str:
     text = "<blockquote expandable>"
     for track in tracks:
-        pos = queue.add(chat_id, track)
+        pos = await queue.add(chat_id, track)
         text += f"<b>{pos}.</b> {track.title}\n"
     text = text[:1948] + "</blockquote>"
     return text
@@ -124,11 +124,25 @@ async def play_hndlr(
     file.user = mention
     file.source = 'user'  # Mark as user-requested for recommendation training
     if force:
-        queue.force_add(m.chat.id, file)
+        await queue.force_add(m.chat.id, file)
     else:
-        position = queue.add(m.chat.id, file)
+        position = await queue.add(m.chat.id, file)
 
-        if position != 0 or await db.get_call(m.chat.id):
+        # Check if song was queued (position > 0) OR if queue thinks something is playing
+        # BUT double check if bot is actually connected to VC
+        is_active = await db.get_call(m.chat.id)
+        
+        # Detect Zombie State: Redis has 'current' (so pos > 0), but pytgcalls is disconnected
+        if position != 0 and not is_active:
+            # Zombie state detected! Clear old state and force this song to play
+            await queue.remove_current(m.chat.id)
+            # Re-add as current (pos 0) via force_add logic simulation or just call play
+            # Simpler: just set as current manually since we know it's empty now
+            await queue.update_current(m.chat.id, file)
+            position = 0
+            # Proceed to play logic below...
+
+        if position != 0:
             await sent.edit_text(
                 m.lang["play_queued"].format(
                     position,
@@ -148,7 +162,7 @@ async def play_hndlr(
                 asyncio.create_task(anon.prepare_track(m.chat.id, file))
             
             if tracks:
-                added = playlist_to_queue(m.chat.id, tracks)
+                added = await playlist_to_queue(m.chat.id, tracks)
                 await app.send_message(
                     chat_id=m.chat.id,
                     text=m.lang["playlist_queued"].format(len(tracks)) + added,
@@ -183,7 +197,7 @@ async def play_hndlr(
     await anon.play_media(chat_id=m.chat.id, message=sent, media=file)
     if not tracks:
         return
-    added = playlist_to_queue(m.chat.id, tracks)
+    added = await playlist_to_queue(m.chat.id, tracks)
     await app.send_message(
         chat_id=m.chat.id,
         text=m.lang["playlist_queued"].format(len(tracks)) + added,

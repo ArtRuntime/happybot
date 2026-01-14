@@ -23,7 +23,7 @@ async def _activevc(_, m: types.Message):
     text = ""
 
     for i, chat in enumerate(db.active_calls):
-        playing = queue.get_current(chat)
+        playing = await queue.get_current(chat)
         text += f"\n{i+1}. <code>{chat}</code>\n    ➜ {playing.title[:25]}"
 
     if len(text) < 4000:
