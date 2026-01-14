@@ -142,7 +142,17 @@ class Userbot(Client):
                     session_doc["name"]
                 )
             except Exception as e:
+                error_msg = str(e)
                 logger.error(f"Failed to load session '{session_doc['name']}': {e}")
+                
+                # Auto-disable sessions with auth errors
+                if "AUTH_KEY_UNREGISTERED" in error_msg or "SESSION_REVOKED" in error_msg:
+                    logger.warning(f"Auto-disabling invalid session '{session_doc['name']}'")
+                    try:
+                        await db.remove_session(session_doc["name"])
+                        logger.info(f"Session '{session_doc['name']}' marked as inactive")
+                    except Exception as db_err:
+                        logger.error(f"Failed to auto-disable session: {db_err}")
 
     async def exit(self):
         """Stop all assistant clients."""

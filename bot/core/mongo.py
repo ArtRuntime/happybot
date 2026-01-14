@@ -381,6 +381,14 @@ class MongoDB:
             self.sessions = sessions
         return self.sessions
 
+    async def get_all_sessions(self, include_inactive: bool = True) -> list[dict]:
+        """Get all sessions from database, optionally including inactive ones."""
+        query = {} if include_inactive else {"status": "active"}
+        sessions = []
+        async for session in self.sessionsdb.find(query).sort("added_at", -1):
+            sessions.append(session)
+        return sessions
+
     async def add_session(self, session_string: str, name: str, user_id: int) -> dict:
         """Add a new session to database."""
         from datetime import datetime
@@ -404,13 +412,11 @@ class MongoDB:
         return session_doc
 
     async def remove_session(self, name: str) -> bool:
-        """Mark a session as inactive (soft delete)."""
-        result = await self.sessionsdb.update_one(
-            {"name": name, "status": "active"},
-            {"$set": {"status": "inactive"}}
-        )
+        """Permanently delete a session from database."""
+        # Delete the session document
+        result = await self.sessionsdb.delete_one({"name": name})
         
-        if result.modified_count > 0:
+        if result.deleted_count > 0:
             # Remove from cache
             self.sessions = [s for s in self.sessions if s["name"] != name]
             return True

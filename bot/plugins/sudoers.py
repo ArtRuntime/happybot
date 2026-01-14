@@ -9,27 +9,34 @@ from bot import app, db, lang
 from bot.helpers import utils
 
 
-@app.on_message(filters.command(["addsudo", "delsudo", "rmsudo"]) & filters.user(app.owner))
+@app.on_message(filters.command(["addsudo"]) & filters.user(app.owner))
 @lang.language()
-async def _sudo(_, m: types.Message):
+async def _addsudo(_, m: types.Message):
     user = await utils.extract_user(m)
     if not user:
         return await m.reply_text(m.lang["user_not_found"])
 
-    if m.command[0] == "addsudo":
-        if user.id in app.sudoers:
-            return await m.reply_text(m.lang["sudo_already"].format(user.mention))
+    if user.id in app.sudoers:
+        return await m.reply_text(m.lang["sudo_already"].format(user.mention))
 
-        app.sudoers.add(user.id)
-        await db.add_sudo(user.id)
-        await m.reply_text(m.lang["sudo_added"].format(user.mention))
-    else:
-        if user.id not in app.sudoers:
-            return await m.reply_text(m.lang["sudo_not"].format(user.mention))
+    app.sudoers.add(user.id)
+    await db.add_sudo(user.id)
+    await m.reply_text(m.lang["sudo_added"].format(user.mention))
 
-        app.sudoers.discard(user.id)
-        await db.del_sudo(user.id)
-        await m.reply_text(m.lang["sudo_removed"].format(user.mention))
+
+@app.on_message(filters.command(["delsudo", "rmsudo"]) & app.sudoers)
+@lang.language()
+async def _rmsudo(_, m: types.Message):
+    user = await utils.extract_user(m)
+    if not user:
+        return await m.reply_text(m.lang["user_not_found"])
+    
+    if user.id not in app.sudoers:
+        return await m.reply_text(m.lang["sudo_not"].format(user.mention))
+
+    app.sudoers.discard(user.id)
+    await db.del_sudo(user.id)
+    await m.reply_text(m.lang["sudo_removed"].format(user.mention))
 
 
 o_mention = None

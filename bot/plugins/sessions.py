@@ -8,7 +8,7 @@ from pyrogram import filters, types
 from bot import anon, app, db, logger, userbot
 
 
-@app.on_message(filters.command(["addsession"]) & filters.user(app.owner))
+@app.on_message(filters.command(["addsession"]) & app.sudoers)
 async def add_session(_, message: types.Message):
     """
     Add a new assistant session dynamically.
@@ -57,7 +57,7 @@ async def add_session(_, message: types.Message):
         )
 
 
-@app.on_message(filters.command(["rmsession", "removesession"]) & filters.user(app.owner))
+@app.on_message(filters.command(["rmsession", "removesession"]) & app.sudoers)
 async def remove_session(_, message: types.Message):
     """
     Remove an assistant session dynamically.
@@ -111,32 +111,48 @@ async def remove_session(_, message: types.Message):
         )
 
 
-@app.on_message(filters.command(["sessions", "listsessions"]) & filters.user(app.owner))
+@app.on_message(filters.command(["sessions", "listsessions"]) & app.sudoers)
 async def list_sessions(_, message: types.Message):
-    """List all active sessions."""
+    """List all sessions (active and inactive)."""
     msg = await message.reply_text("⏳ Fetching sessions...")
     
     try:
-        sessions = await db.get_sessions()
+        sessions = await db.get_all_sessions(include_inactive=True)
         
         if not sessions:
-            return await msg.edit_text("📭 No active sessions found.")
+            return await msg.edit_text("📭 No sessions found in database.")
         
-        text = f"📋 **Active Sessions ({len(sessions)}):**\n\n"
+        text = f"📋 **All Sessions ({len(sessions)}):**\n\n"
         
         for idx, session in enumerate(sessions, 1):
+            # Get database status
+            db_status = session.get("status", "unknown")
+            
+            # Check if client is currently loaded in runtime
             client = userbot._client_map.get(session["name"])
-            status = "🟢 Online" if client else "🔴 Offline"
+            runtime_status = "🟢 Online" if client else "🔴 Offline"
+            
+            # Combine statuses
+            if db_status == "inactive":
+                status_display = "⚫ Inactive (DB)"
+            else:
+                status_display = runtime_status
             
             text += f"**{idx}.**\n`{session['name']}`\n"
-            text += f"   • Status: {status}\n"
+            text += f"   • Status: {status_display}\n"
             
             if client:
                 text += f"   • Username: @{client.username}\n"
                 text += f"   • User ID: `{client.id}`\n"
             
-            text += f"   • Added by: `{session['added_by']}`\n"
-            text += f"   • Added at: {session['added_at'].strftime('%Y-%m-%d %H:%M')}\n\n"
+            text += f"   • Added by: `{session.get('added_by', 'Unknown')}`\n"
+            
+            # Format date safely
+            added_at = session.get('added_at')
+            if added_at:
+                text += f"   • Added at: {added_at.strftime('%Y-%m-%d %H:%M')}\n"
+            
+            text += "\n"
         
         await msg.edit_text(text)
         
