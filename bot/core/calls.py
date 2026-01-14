@@ -20,6 +20,7 @@ from bot.helpers import Media, Track, buttons, thumb, utils
 class TgCall(PyTgCalls):
     def __init__(self):
         self.clients = []
+        self._client_map = {}
         self._consecutive_failures: dict[int, int] = defaultdict(int)
 
     async def pause(self, chat_id: int) -> bool:
@@ -655,6 +656,9 @@ class TgCall(PyTgCalls):
         client = PyTgCalls(userbot_client, cache_duration=100)
         await client.start()
         self.clients.append(client)
+        if not hasattr(self, "_client_map"):
+            self._client_map = {}
+        self._client_map[userbot_client.name] = client
         await self.decorators(client)
         logger.info(f"PyTgCalls client added for {userbot_client.name}")
         return client
@@ -669,18 +673,28 @@ class TgCall(PyTgCalls):
         Returns:
             True if removed, False if not found
         """
-        # Find the PyTgCalls client for this userbot
-        tgcalls_client = None
-        for client in self.clients:
-            if client.session == userbot_client:
-                tgcalls_client = client
-                break
+        # Find the PyTgCalls client using the map
+        if not hasattr(self, "_client_map"):
+            self._client_map = {}
+        tgcalls_client = self._client_map.get(userbot_client.name)
         
         if not tgcalls_client:
+            # Fallback: legacy check just in case (though broken previously)
             return False
         
-        # Remove from list
-        self.clients.remove(tgcalls_client)
+        # Stop the client
+        try:
+            await tgcalls_client.stop()
+        except:
+            pass
+
+        # Remove from list and map
+        if tgcalls_client in self.clients:
+            self.clients.remove(tgcalls_client)
+        
+        if userbot_client.name in self._client_map:
+            del self._client_map[userbot_client.name]
+            
         logger.info(f"PyTgCalls client removed for {userbot_client.name}")
         return True
 

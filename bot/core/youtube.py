@@ -303,7 +303,7 @@ class YouTube:
                 logger.info(f"Non-YouTube source ({extractor}) - using full URL for download")
 
             # Get duration from yt-dlp (returns seconds) and format it
-            duration_sec = info.get("duration", 0)
+            duration_sec = int(info.get("duration", 0) or 0)
             if duration_sec:
                 hours = duration_sec // 3600
                 mins = (duration_sec % 3600) // 60

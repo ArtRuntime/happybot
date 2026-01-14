@@ -75,28 +75,32 @@ async def remove_session(_, message: types.Message):
     msg = await message.reply_text(f"⏳ Removing session '{name}'...")
     
     try:
-        # Get the client before removing
+        # Get the client before removing (optional check)
         client = userbot._client_map.get(name)
-        if not client:
-            return await msg.edit_text(f"❌ Session '{name}' not found in active sessions.")
         
-        # Remove PyTgCalls client first
-        await anon.remove_pytgcalls_client(client)
+        # Try to remove from runtime, but don't stop if it fails
+        if client:
+            try:
+                await anon.remove_pytgcalls_client(client)
+            except Exception as e:
+                logger.error(f"Failed to remove PyTgCalls client: {e}")
+            
+            try:
+                await userbot.remove_client(name)
+            except Exception as e:
+                logger.error(f"Failed to remove Userbot client: {e}")
         
-        # Remove from userbot
-        await userbot.remove_client(name)
-        
-        # Mark as inactive in database
+        # Always attempt to remove from database
         removed = await db.remove_session(name)
         
         if removed:
             await msg.edit_text(
                 f"✅ **Session Removed Successfully!**\n\n"
                 f"**Name:** `{name}`\n\n"
-                f"The assistant has been stopped and removed from the active pool."
+                f"The assistant has been removed from the database."
             )
         else:
-            await msg.edit_text(f"⚠️ Session removed from runtime but not found in database.")
+            await msg.edit_text(f"⚠️ Session '{name}' not found in database, but runtime cleanup was attempted.")
             
     except Exception as e:
         logger.error(f"Failed to remove session: {e}", exc_info=True)
@@ -124,7 +128,7 @@ async def list_sessions(_, message: types.Message):
             client = userbot._client_map.get(session["name"])
             status = "🟢 Online" if client else "🔴 Offline"
             
-            text += f"**{idx}. {session['name']}**\n"
+            text += f"**{idx}.**\n`{session['name']}`\n"
             text += f"   • Status: {status}\n"
             
             if client:
