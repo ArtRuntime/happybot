@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pyrogram import filters, types
 
-from bot import anon, app, config, db, lang, queue, tg, yt
+from bot import anon, app, config, db, lang, queue, tg, userbot, yt
 from bot.helpers import buttons, utils
 from bot.helpers._play import checkUB
 
@@ -35,6 +35,12 @@ async def play_hndlr(
     video: bool = False,
     url: str = None,
 ) -> None:
+    if not userbot.clients:
+        return await m.reply_text(
+            "⚠️ **No Assistant Found!**\n\n"
+            "The bot requires an assistant account to join the voice chat.\n"
+            "Please go to my PM and send /login to add an assistant."
+        )
     sent = await m.reply_text(m.lang["play_searching"])
     file = None
     mention = m.from_user.mention

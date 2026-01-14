@@ -3,6 +3,7 @@ help - Show the help menu
 play - Play audio from a link or search query
 vplay - Play video from a link or search query
 stop - Stop playback and clear queue
+loop - Loop the current track
 pause - Pause the current playback
 resume - Resume paused playback
 skip - Skip to the next track

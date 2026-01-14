@@ -18,6 +18,7 @@ class Queue:
     def __init__(self):
         # We assume config.REDIS_URL is available
         self.rds = redis.from_url(config.REDIS_URL, decode_responses=True)
+        self.prefix = config.REDIS_PREFIX
 
     @staticmethod
     def _to_json(item: MediaItem) -> str:
@@ -89,17 +90,17 @@ class Queue:
         
         # Redis Logic:
         # If current is empty, set it. Else add to queue list.
-        current = await self.rds.get(f"current:{chat_id}")
+        current = await self.rds.get(f"{self.prefix}current:{chat_id}")
         if not current:
-             await self.rds.set(f"current:{chat_id}", json_item)
+             await self.rds.set(f"{self.prefix}current:{chat_id}", json_item)
              return 0  # 0 indicates it's playing now (conceptually)
         else:
-             pos = await self.rds.rpush(f"queue:{chat_id}", json_item)
+             pos = await self.rds.rpush(f"{self.prefix}queue:{chat_id}", json_item)
              return pos
 
     async def check_item(self, chat_id: int, item_id: str) -> tuple[int, MediaItem | None]:
         """Check if an item with the given ID exists in the queue."""
-        items = await self.rds.lrange(f"queue:{chat_id}", 0, -1)
+        items = await self.rds.lrange(f"{self.prefix}queue:{chat_id}", 0, -1)
         for i, data in enumerate(items):
             item = self._from_json(data)
             if item and item.id == item_id:
@@ -117,49 +118,49 @@ class Queue:
         json_item = self._to_json(item)
         
         # Set as current
-        await self.rds.set(f"current:{chat_id}", json_item)
+        await self.rds.set(f"{self.prefix}current:{chat_id}", json_item)
         
         if remove:
             # Pop `remove` items from LEFT
              for _ in range(int(remove)):
-                 await self.rds.lpop(f"queue:{chat_id}")
+                 await self.rds.lpop(f"{self.prefix}queue:{chat_id}")
                  
         # Actually force_play usually means stop current, play this.
         # We set `current`. Queue remains. 
         # If we want to simulate `appendleft`, we LPUSH.
-        await self.rds.lpush(f"queue:{chat_id}", json_item)
+        await self.rds.lpush(f"{self.prefix}queue:{chat_id}", json_item)
 
     async def insert_front(self, chat_id: int, item: MediaItem) -> None:
         """Insert an item to the front of the queue (play next)."""
         json_item = self._to_json(item)
-        await self.rds.lpush(f"queue:{chat_id}", json_item)
+        await self.rds.lpush(f"{self.prefix}queue:{chat_id}", json_item)
 
 
     async def get_current(self, chat_id: int) -> MediaItem | None:
         """Return the currently playing item."""
-        data = await self.rds.get(f"current:{chat_id}")
+        data = await self.rds.get(f"{self.prefix}current:{chat_id}")
         return self._from_json(data)
 
     async def update_current(self, chat_id: int, item: MediaItem) -> None:
         """Update the currently playing item (e.g. adding message_id)."""
         json_item = self._to_json(item)
-        await self.rds.set(f"current:{chat_id}", json_item)
+        await self.rds.set(f"{self.prefix}current:{chat_id}", json_item)
 
     async def get_next(self, chat_id: int, check: bool = False) -> MediaItem | None:
         """Remove current item and return the next one, or None if empty."""
         # If just checking next item
         if check:
-            data = await self.rds.lindex(f"queue:{chat_id}", 0)
+            data = await self.rds.lindex(f"{self.prefix}queue:{chat_id}", 0)
             return self._from_json(data)
 
         # Move next item from queue to current
-        data = await self.rds.lpop(f"queue:{chat_id}")
+        data = await self.rds.lpop(f"{self.prefix}queue:{chat_id}")
         if data:
-            await self.rds.set(f"current:{chat_id}", data)
+            await self.rds.set(f"{self.prefix}current:{chat_id}", data)
             return self._from_json(data)
         else:
             # Queue empty
-            await self.rds.delete(f"current:{chat_id}")
+            await self.rds.delete(f"{self.prefix}current:{chat_id}")
             return None
 
     async def get_playing(self, chat_id: int) -> MediaItem | None:
@@ -173,7 +174,7 @@ class Queue:
         if current:
             items.append(current)
             
-        queue_data = await self.rds.lrange(f"queue:{chat_id}", 0, -1)
+        queue_data = await self.rds.lrange(f"{self.prefix}queue:{chat_id}", 0, -1)
         for data in queue_data:
             item = self._from_json(data)
             if item:
@@ -182,9 +183,9 @@ class Queue:
 
     async def remove_current(self, chat_id: int) -> None:
         """Remove the currently playing item key."""
-        await self.rds.delete(f"current:{chat_id}")
+        await self.rds.delete(f"{self.prefix}current:{chat_id}")
 
     async def clear(self, chat_id: int) -> None:
         """Clear the entire queue and current."""
-        await self.rds.delete(f"queue:{chat_id}")
-        await self.rds.delete(f"current:{chat_id}")
+        await self.rds.delete(f"{self.prefix}queue:{chat_id}")
+        await self.rds.delete(f"{self.prefix}current:{chat_id}")
