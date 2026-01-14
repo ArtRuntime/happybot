@@ -38,8 +38,8 @@ async def _controls(_, query: types.CallbackQuery):
     if not current:
         return await query.answer(query.lang["not_playing"], show_alert=True)
         
-    # Skip check for force/queue actions as they might be from other messages
-    if action not in ["force", "autoplay"] and getattr(current, "message_id", 0) != query.message.id:
+    # Skip check for force actions as they might be from other messages
+    if action not in ["force"] and getattr(current, "message_id", 0) != query.message.id:
         return await query.answer("❌ This control panel is expired.", show_alert=True)
     
     

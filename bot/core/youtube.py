@@ -184,21 +184,6 @@ class YouTube:
             search = VideosSearch(query, limit=1)
             results = await search.next()
             
-            # Clean up env vars (optional, but good practice if we don't want to affect other libs unexpectedly, 
-            # though httpx usually respects them globally anyway)
-            # if config.PROXY_URL:
-            #     os.environ.pop("HTTP_PROXY", None)
-            #     os.environ.pop("HTTPS_PROXY", None)
-            # Actually, keeping them might be beneficial if other parts use httpx implicitly.
-            # But let's be safe and clear them if we want isolation. 
-            # For now, let's leave them or not clear them? 
-            # Safer to NOT clear if we run concurrently? 
-            # Actually concurrently setting env vars is NOT thread safe.
-            # But asyncio runs on one thread usually.
-            # However, if we want to be robust, we should try to pass proxy to VideosSearch if possible.
-            # Does VideosSearch accept it? No.
-            # Setting env vars is the standard way for httpx.
-            
             if not results or not results.get('result'):
                 logger.warning("No playable result found in search")
                 return None
