@@ -22,6 +22,7 @@ class TgCall(PyTgCalls):
         self.clients = []
         self._client_map = {}
         self._consecutive_failures: dict[int, int] = defaultdict(int)
+        self._play_next_locks: dict[int, asyncio.Lock] = {}
 
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
@@ -482,11 +483,21 @@ class TgCall(PyTgCalls):
 
 
     async def play_next(self, chat_id: int) -> None:
-        # Check consecutive failures to prevent loops
-        if self._consecutive_failures[chat_id] >= 3:
-            logger.warning(f"Stopping playback loop in {chat_id} due to 3 consecutive failures")
-            self._consecutive_failures[chat_id] = 0
-            return await self.stop(chat_id)
+        # Acquire lock to prevent race conditions (multiple stream_end events)
+        if chat_id not in self._play_next_locks:
+            self._play_next_locks[chat_id] = asyncio.Lock()
+        
+        # Try to acquire lock, skip if already processing
+        if self._play_next_locks[chat_id].locked():
+            logger.debug(f"play_next already running for {chat_id}, skipping duplicate call")
+            return
+        
+        async with self._play_next_locks[chat_id]:
+            # Check consecutive failures to prevent loops
+            if self._consecutive_failures[chat_id] >= 3:
+                logger.warning(f"Stopping playback loop in {chat_id} due to 3 consecutive failures")
+                self._consecutive_failures[chat_id] = 0
+                return await self.stop(chat_id)
 
         # Cleanup previous track
         old_media = await queue.get_playing(chat_id)
@@ -628,19 +639,19 @@ class TgCall(PyTgCalls):
 
 
     async def decorators(self, client: PyTgCalls) -> None:
-        for client in self.clients:
-            @client.on_update()
-            async def update_handler(_, update: types.Update) -> None:
-                if isinstance(update, types.StreamEnded):
-                    if update.stream_type == types.StreamEnded.Type.AUDIO:
-                        await self.play_next(update.chat_id)
-                elif isinstance(update, types.ChatUpdate):
-                    if update.status in [
-                        types.ChatUpdate.Status.KICKED,
-                        types.ChatUpdate.Status.LEFT_GROUP,
-                        types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
-                    ]:
-                        await self.stop(update.chat_id)
+        """Register stream event handlers for a specific PyTgCalls client."""
+        @client.on_update()
+        async def update_handler(_, update: types.Update) -> None:
+            if isinstance(update, types.StreamEnded):
+                if update.stream_type == types.StreamEnded.Type.AUDIO:
+                    await self.play_next(update.chat_id)
+            elif isinstance(update, types.ChatUpdate):
+                if update.status in [
+                    types.ChatUpdate.Status.KICKED,
+                    types.ChatUpdate.Status.LEFT_GROUP,
+                    types.ChatUpdate.Status.CLOSED_VOICE_CHAT,
+                ]:
+                    await self.stop(update.chat_id)
 
 
     async def add_pytgcalls_client(self, userbot_client) -> PyTgCalls:

@@ -53,11 +53,15 @@ async def track_time():
             if not media:
                 continue
             media.time += 1
+            try:
+                await queue.update_current(chat_id, media)
+            except:
+                pass
 
 
 async def update_timer(length=10):
     while True:
-        await asyncio.sleep(7)
+        await asyncio.sleep(config.PLAYER_UPDATE_INTERVAL)
         for chat_id in list(db.active_calls):
             if not await db.playing(chat_id):
                 continue
@@ -80,7 +84,11 @@ async def update_timer(length=10):
                     remove = True
                 else:
                     remove = False
-                    timer = f"{time.strftime('%M:%S', time.gmtime(played))} | {timer} | -{time.strftime('%M:%S', time.gmtime(remaining))}"
+                    if duration >= 3600:
+                        fmt = "%H:%M:%S"
+                    else:
+                        fmt = "%M:%S"
+                    timer = f"{time.strftime(fmt, time.gmtime(played))} | {timer} | -{time.strftime(fmt, time.gmtime(remaining))}"
 
                 autoplay_status = await db.get_autoplay(chat_id)
                 await app.edit_message_reply_markup(
