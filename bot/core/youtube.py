@@ -12,6 +12,7 @@ import aiohttp
 from pathlib import Path
 from datetime import datetime
 
+from youtubesearchpython.__future__ import VideosSearch
 from ytmusicapi import YTMusic
 
 from bot import logger, config, db
@@ -174,59 +175,27 @@ class YouTube:
             return None
         
         try:
-            # Search using ytmusicapi (no filter for broad results)
-            results = await asyncio.to_thread(
-                self.ytmusic.search,
-                query,
-                limit=10  # Get multiple results to find a playable one
-            )
+            # Search using youtube-search-python
+            search = VideosSearch(query, limit=1)
+            results = await search.next()
             
-            # Find first result with a videoId (skip albums, artists, playlists)
-            data = None
-            for result in results:
-                if result.get("videoId"):
-                    data = result
-                    break
-            
-            if not data:
+            if not results or not results.get('result'):
                 logger.warning("No playable result found in search")
                 return None
-
-            video_id = data.get("videoId")
+                
+            data = results['result'][0]
+            video_id = data.get('id')
+            title = data.get('title')
             
-            # Extract artist name
-            artists = data.get("artists", [])
-            channel_name = artists[0].get("name") if artists else "Unknown"
+            # Extract duration (already string in py-yt-search e.g. "4:30")
+            duration = data.get('duration')
             
-            # Get duration - parse different formats
-            duration = data.get("duration")
-            duration_seconds = None
+            # Extract channel
+            channel_name = data.get('channel', {}).get('name', 'Unknown')
             
-            if isinstance(duration, str) and "min" in duration.lower():
-                try:
-                    mins = int(duration.lower().replace("min", "").strip())
-                    duration_seconds = mins * 60
-                except:
-                    pass
-            elif isinstance(duration, int):
-                duration_seconds = duration
-            elif isinstance(duration, str) and ":" in duration:
-                pass  # Already formatted
-            
-            if duration_seconds:
-                hours = duration_seconds // 3600
-                mins = (duration_seconds % 3600) // 60
-                secs = duration_seconds % 60
-                if hours > 0:
-                    duration = f"{hours}:{mins:02d}:{secs:02d}"
-                else:
-                    duration = f"{mins}:{secs:02d}"
-            else:
-                duration = duration or "0:00"
-            
-            # Get thumbnail - preserve full URL
-            thumbnails = data.get("thumbnails", [])
-            thumbnail = thumbnails[-1].get("url", "") if thumbnails else None
+            # Extract thumbnail
+            thumbnails = data.get('thumbnails', [])
+            thumbnail = thumbnails[-1].get('url', "") if thumbnails else None
             
             return Track(
                 id=video_id,
@@ -234,14 +203,14 @@ class YouTube:
                 duration=duration,
                 duration_sec=utils.to_seconds(duration),
                 message_id=m_id,
-                title=data.get("title", "Unknown")[:25],
+                title=title[:50], # Limit title length
                 thumbnail=thumbnail,
                 url=f"https://www.youtube.com/watch?v={video_id}",
-                view_count="",
+                view_count=data.get('viewCount', {}).get('short', ''),
                 video=video,
             )
         except Exception as e:
-            logger.error(f"ytmusicapi search failed: {e}")
+            logger.error(f"py-yt-search failed: {e}")
         
         return None
 
