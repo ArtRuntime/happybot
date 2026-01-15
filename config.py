@@ -19,7 +19,7 @@ class Config:
 
         self.DURATION_LIMIT = int(getenv("DURATION_LIMIT", 60)) * 60
         self.QUEUE_LIMIT = int(getenv("QUEUE_LIMIT", 20))
-        self.PLAYLIST_LIMIT = int(getenv("PLAYLIST_LIMIT", 20))
+        self.PLAYLIST_LIMIT = int(getenv("PLAYLIST_LIMIT", 0)) # 0 = Unlimited
 
         # Sessions (optional - now stored in MongoDB)
         self.SESSION1 = getenv("SESSION", None) or getenv("SESSION1", None)

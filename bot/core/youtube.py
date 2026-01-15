@@ -352,17 +352,25 @@ class YouTube:
             logger.info(f"Fetching playlist: {playlist_id}")
             
             # Get playlist using ytmusicapi
+            # Use limit=None for unlimited if limit <= 0
+            api_limit = limit if limit > 0 else None
+            
             playlist_data = await asyncio.to_thread(
                 self.ytmusic.get_playlist,
                 playlist_id,
-                limit=limit
+                limit=api_limit
             )
             
             if not playlist_data or 'tracks' not in playlist_data:
-                logger.warning("No tracks found in playlist")
-                return tracks
+                logger.warning("No tracks found in playlist (ytmusicapi). Falling back to yt-dlp...")
+                return await self._generic_playlist(url, limit, user, video)
             
-            for data in playlist_data['tracks'][:limit]:
+            # Slice only if limit is set
+            raw_tracks = playlist_data['tracks']
+            if limit > 0:
+                raw_tracks = raw_tracks[:limit]
+            
+            for data in raw_tracks:
                 if not data:
                     continue
                 
@@ -398,6 +406,10 @@ class YouTube:
                 tracks.append(track)
                 
             logger.info(f"Loaded {len(tracks)} tracks from playlist")
+            
+            if not tracks:
+                 logger.warning("ytmusicapi returned tracks but parsing failed. Falling back to yt-dlp...")
+                 return await self._generic_playlist(url, limit, user, video)
         except Exception as e:
             logger.error(f"ytmusicapi Playlist error: {e}")
             logger.info("Falling back to yt-dlp for playlist...")
@@ -414,8 +426,12 @@ class YouTube:
             "no_warnings": True,
             "nocheckcertificate": True,
             "extract_flat": True,  # Fast extraction
-            "playlistend": limit,
         }
+        
+        # Only set limit if it's positive
+        if limit > 0:
+            ydl_opts["playlistend"] = limit
+            
         if cookie:
             ydl_opts["cookiefile"] = cookie
             
