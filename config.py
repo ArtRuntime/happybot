@@ -54,7 +54,7 @@ class Config:
         self.ANIME_API_URL = getenv("ANIME_API_URL", "https://anime-api2-three.vercel.app")
         
         # Player Update Interval (seconds) - Default 7s zada jaldi krenge to rate limit laga jayega
-        self.PLAYER_UPDATE_INTERVAL = int(getenv("PLAYER_UPDATE_INTERVAL", 6))
+        self.PLAYER_UPDATE_INTERVAL = int(getenv("PLAYER_UPDATE_INTERVAL", 7))
         
         # Proxy Configuration
         self.PROXY_HOST = getenv("PROXY_HOST", "127.0.0.1")

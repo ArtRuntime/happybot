@@ -113,48 +113,91 @@ async def remove_session(_, message: types.Message):
 
 @app.on_message(filters.command(["sessions", "listsessions"]) & app.sudoers)
 async def list_sessions(_, message: types.Message):
-    """List all sessions (active and inactive)."""
-    msg = await message.reply_text("⏳ Fetching sessions...")
+    """List all sessions and check their validity."""
+    msg = await message.reply_text("⏳ Fetching and validating sessions... This may take a moment.")
     
     try:
+        from bot import config
+        from pyrogram import Client
+        
         sessions = await db.get_all_sessions(include_inactive=True)
         
         if not sessions:
             return await msg.edit_text("📭 No sessions found in database.")
+            
+        sessions.sort(key=lambda x: x["name"])
         
-        text = f"📋 **All Sessions ({len(sessions)}):**\n\n"
+        text = f"📋 **Session Status Check:**\n\n"
+        valid_count = 0
+        invalid_count = 0
         
         for idx, session in enumerate(sessions, 1):
-            # Get database status
-            db_status = session.get("status", "unknown")
+            name = session["name"]
+            session_string = session["session_string"]
             
-            # Check if client is currently loaded in runtime
-            client = userbot._client_map.get(session["name"])
-            runtime_status = "🟢 Online" if client else "🔴 Offline"
-            
-            # Combine statuses
-            if db_status == "inactive":
-                status_display = "⚫ Inactive (DB)"
-            else:
-                status_display = runtime_status
-            
-            text += f"**{idx}.**\n`{session['name']}`\n"
-            text += f"   • Status: {status_display}\n"
+            # Check runtime status
+            client = userbot._client_map.get(name)
+            is_valid = False
+            error_reason = ""
             
             if client:
-                text += f"   • Username: @{client.username}\n"
-                text += f"   • User ID: `{client.id}`\n"
+                # Client is online - check if it's still valid
+                try:
+                    me = await client.get_me()
+                    is_valid = True
+                    user_id = me.id
+                    username = me.username
+                except Exception as e:
+                    is_valid = False
+                    error_reason = str(e)
+            else:
+                # Client is offline - verify manually
+                try:
+                    # Create temporary client to check
+                    temp_client = Client(
+                        name=f"check_{name}",
+                        api_id=config.API_ID,
+                        api_hash=config.API_HASH,
+                        session_string=session_string,
+                        in_memory=True,
+                        no_updates=True,
+                        proxy=config.PROXY_DICT
+                    )
+                    await temp_client.connect()
+                    me = await temp_client.get_me()
+                    is_valid = True
+                    user_id = me.id
+                    username = me.username
+                    await temp_client.disconnect()
+                except Exception as e:
+                    is_valid = False
+                    error_reason = str(e)
+
+            # Format Output
+            status_icon = "✅" if is_valid else "❌"
+            runtime_icon = "🟢" if client else "⚫"
             
-            text += f"   • Added by: `{session.get('added_by', 'Unknown')}`\n"
+            text += f"**{idx}. {name}**\n"
+            text += f"   Status: {status_icon} {'Valid' if is_valid else 'Revoked/Invalid'}\n"
+            text += f"   State: {runtime_icon} {'Online' if client else 'Offline'}\n"
             
-            # Format date safely
-            added_at = session.get('added_at')
-            if added_at:
-                text += f"   • Added at: {added_at.strftime('%Y-%m-%d %H:%M')}\n"
+            if is_valid:
+                text += f"   ID: `{user_id}`\n"
+                if username:
+                    text += f"   User: @{username}\n"
+                valid_count += 1
+            else:
+                text += f"   Error: {error_reason[:30]}...\n"
+                invalid_count += 1
             
             text += "\n"
+            
+            # Update status periodically for long lists
+            if idx % 5 == 0:
+                await msg.edit_text(text + f"\n⏳ Checking {idx}/{len(sessions)}...")
         
-        await msg.edit_text(text)
+        summary = f"\n**Summary:**\nTotal: {len(sessions)} | Valid: {valid_count} | Invalid: {invalid_count}"
+        await msg.edit_text(text + summary)
         
     except Exception as e:
         logger.error(f"Failed to list sessions: {e}", exc_info=True)

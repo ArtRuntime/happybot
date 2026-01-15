@@ -5,6 +5,7 @@
 
 from random import randint
 from time import time
+import asyncio
 
 from pymongo import AsyncMongoClient
 
@@ -19,35 +20,36 @@ class MongoDB:
         self.mongo = AsyncMongoClient(config.MONGO_URL, serverSelectionTimeoutMS=12500)
         self.db = self.mongo[config.MONGO_DB_NAME]
 
+        # O(1) lookup structures
         self.admin_list = {}
         self.active_calls = {}
-        self.admin_play = []
-        self.blacklisted = []
-        self.cmd_delete = []
-        self.notified = []
+        self.admin_play = set()
+        self.blacklisted_chats = set()
+        self.blacklisted_users = set()
+        self.cmd_delete = set()
+        self.notified = set()
+        
         self.cache = self.db.cache
         self.logger = False
 
-        self.assistant = {}
+        self.assistant = {} # Chat ID -> Assistant Name (String)
         self.assistantdb = self.db.assistant
 
         self.auth = {}
         self.authdb = self.db.auth
 
-        self.chats = []
+        self.chats = set()
         self.chatsdb = self.db.chats
 
         self.lang = {}
         self.langdb = self.db.lang
 
-        self.users = []
+        self.users = set()
         self.usersdb = self.db.users
         
         self.autoplay = {}
         self.autoplaydb = self.db.autoplay
         
-        # Sessions collection for dynamic assistant management
-        self.sessions = []
         # Sessions collection for dynamic assistant management
         self.sessions = []
         self.sessionsdb = self.db.sessions
@@ -56,18 +58,31 @@ class MongoDB:
         self.stream_cache = self.db.stream_cache
 
     async def connect(self) -> None:
-        """Check if we can connect to the database.
-
-        Raises:
-            SystemExit: If the connection to the database fails.
-        """
+        """Check if we can connect to the database and create indexes."""
         try:
             start = time()
             await self.mongo.admin.command("ping")
             logger.info(f"Database connection successful. ({time() - start:.2f}s)")
+            
+            # Create Indexes
+            await self._create_indexes()
+            
             await self.load_cache()
         except Exception as e:
             raise SystemExit(f"Database connection failed: {type(e).__name__}") from e
+
+    async def _create_indexes(self):
+        """Create necessary indexes for performance."""
+        try:
+            # Users & Chats
+            # _id is automatically indexed and unique in MongoDB, so we don't need to create it explicitly
+            
+            # Sessions (Name must be unique)
+            await self.sessionsdb.create_index("name", unique=True)
+            
+            logger.info("Database indexes verified/created.")
+        except Exception as e:
+            logger.error(f"Failed to create indexes: {e}")
 
     async def close(self) -> None:
         """Close the connection to the database."""
@@ -122,55 +137,88 @@ class MongoDB:
                 {"_id": chat_id}, {"$pull": {"user_ids": user_id}}
             )
 
-    # ASSISTANT METHODS
-    async def set_assistant(self, chat_id: int) -> int:
-        num = randint(1, len(userbot.clients))
+    # ASSISTANT METHODS - LAZY LOADING
+    async def set_assistant(self, chat_id: int, session_name: str) -> str:
+        """Assign a specific assistant (by name) to a chat."""
         await self.assistantdb.update_one(
             {"_id": chat_id},
-            {"$set": {"num": num}},
+            {"$set": {"name": session_name}},
             upsert=True,
         )
-        self.assistant[chat_id] = num
-        return num
+        self.assistant[chat_id] = session_name
+        return session_name
 
     async def get_assistant(self, chat_id: int):
-        from bot import anon
-
+        """
+        Get the assistant client for a chat.
+        Starts the client if it's not running (Lazy Loading).
+        """
         if chat_id not in self.assistant:
             doc = await self.assistantdb.find_one({"_id": chat_id})
-            num = doc["num"] if doc else await self.set_assistant(chat_id)
-            self.assistant[chat_id] = num
-
-        return anon.clients[self.assistant[chat_id] - 1]
+            if doc and "name" in doc:
+                 # Use assigned name
+                 name = doc["name"]
+            else:
+                 # Assign one randomly from available sessions if none assigned
+                 # For now, we pick a random session name from DB
+                 all_sessions = await self.get_all_sessions(include_inactive=False)
+                 if not all_sessions:
+                     # Fallback if no sessions in DB (shouldn't happen if initialized properly)
+                     logger.error("No active sessions available to assign!")
+                     # Return first configured one? Or error
+                     return None
+                     
+                 # Pick random
+                 selected = all_sessions[randint(0, len(all_sessions) - 1)]
+                 name = selected["name"]
+                 await self.set_assistant(chat_id, name)
+            
+            self.assistant[chat_id] = name
+        
+        # Get name
+        name = self.assistant[chat_id]
+        
+        # Ensure client is started (Lazy Load)
+        await userbot.get_client_by_name(name)
+        
+        # Get PyTgCalls client
+        from bot import anon
+        return anon._client_map[name]
 
     async def get_client(self, chat_id: int):
-        if chat_id not in self.assistant:
-            await self.get_assistant(chat_id)
+        """
+        Get the Pyrogram Userbot client for a chat.
+        (Different from get_assistant which returns PyTgCalls client)
+        """
+        # Ensure assistant is assigned and started
+        await self.get_assistant(chat_id)
         
-        # Get client by index (1-based to 0-based)
-        client_index = self.assistant[chat_id] - 1
-        if 0 <= client_index < len(userbot.clients):
-            return userbot.clients[client_index]
-        return None
+        # Get name from cache
+        name = self.assistant[chat_id]
+        
+        # Return Pyrogram client
+        return await userbot.get_client_by_name(name)
 
     # BLACKLIST METHODS
     async def add_blacklist(self, chat_id: int) -> None:
         if str(chat_id).startswith("-"):
-            self.blacklisted.append(chat_id)
+            self.blacklisted_chats.add(chat_id)
             return await self.cache.update_one(
                 {"_id": "bl_chats"}, {"$addToSet": {"chat_ids": chat_id}}, upsert=True
             )
+        self.blacklisted_users.add(chat_id)
         await self.cache.update_one(
             {"_id": "bl_users"}, {"$addToSet": {"user_ids": chat_id}}, upsert=True
         )
 
     async def del_blacklist(self, chat_id: int) -> None:
         if str(chat_id).startswith("-"):
-            self.blacklisted.remove(chat_id)
+            self.blacklisted_chats.discard(chat_id)
             return await self.cache.update_one(
                 {"_id": "bl_chats"},
                 {"$pull": {"chat_ids": chat_id}},
             )
+        self.blacklisted_users.discard(chat_id)
         await self.cache.update_one(
             {"_id": "bl_users"},
             {"$pull": {"user_ids": chat_id}},
@@ -178,45 +226,54 @@ class MongoDB:
 
     async def get_blacklisted(self, chat: bool = False) -> list[int]:
         if chat:
-            if not self.blacklisted:
+            if not self.blacklisted_chats:
                 doc = await self.cache.find_one({"_id": "bl_chats"})
-                self.blacklisted.extend(doc.get("chat_ids", []) if doc else [])
-            return self.blacklisted
-        doc = await self.cache.find_one({"_id": "bl_users"})
-        return doc.get("user_ids", []) if doc else []
+                if doc:
+                    self.blacklisted_chats.update(doc.get("chat_ids", []) if doc else [])
+            return list(self.blacklisted_chats)
+            
+        if not self.blacklisted_users:
+            doc = await self.cache.find_one({"_id": "bl_users"})
+            if doc:
+                self.blacklisted_users.update(doc.get("user_ids", []))
+        return list(self.blacklisted_users)
 
     # CHAT METHODS
     async def is_chat(self, chat_id: int) -> bool:
         return chat_id in self.chats
 
     async def add_chat(self, chat_id: int) -> None:
-        if not await self.is_chat(chat_id):
-            self.chats.append(chat_id)
-            await self.chatsdb.insert_one({"_id": chat_id})
+        if chat_id not in self.chats:
+            self.chats.add(chat_id)
+            try:
+                await self.chatsdb.insert_one({"_id": chat_id})
+            except:
+                pass # Ignore duplicate key error
 
     async def rm_chat(self, chat_id: int) -> None:
-        if await self.is_chat(chat_id):
-            self.chats.remove(chat_id)
+        if chat_id in self.chats:
+            self.chats.discard(chat_id)
             await self.chatsdb.delete_one({"_id": chat_id})
 
     async def get_chats(self) -> list:
         if not self.chats:
-            self.chats.extend([chat["_id"] async for chat in self.chatsdb.find()])
-        return self.chats
+            async for chat in self.chatsdb.find():
+                self.chats.add(chat["_id"])
+        return list(self.chats)
 
     # COMMAND DELETE
     async def get_cmd_delete(self, chat_id: int) -> bool:
         if chat_id not in self.cmd_delete:
             doc = await self.chatsdb.find_one({"_id": chat_id})
             if doc and doc.get("cmd_delete"):
-                self.cmd_delete.append(chat_id)
+                self.cmd_delete.add(chat_id)
         return chat_id in self.cmd_delete
 
     async def set_cmd_delete(self, chat_id: int, delete: bool = False) -> None:
         if delete:
-            self.cmd_delete.append(chat_id)
+            self.cmd_delete.add(chat_id)
         else:
-            self.cmd_delete.remove(chat_id)
+            self.cmd_delete.discard(chat_id)
         await self.chatsdb.update_one(
             {"_id": chat_id},
             {"$set": {"cmd_delete": delete}},
@@ -276,14 +333,14 @@ class MongoDB:
         if chat_id not in self.admin_play:
             doc = await self.chatsdb.find_one({"_id": chat_id})
             if doc and doc.get("admin_play"):
-                self.admin_play.append(chat_id)
+                self.admin_play.add(chat_id)
         return chat_id in self.admin_play
 
     async def set_play_mode(self, chat_id: int, remove: bool = False) -> None:
-        if remove and chat_id in self.admin_play:
-            self.admin_play.remove(chat_id)
+        if remove:
+            self.admin_play.discard(chat_id)
         else:
-            self.admin_play.append(chat_id)
+            self.admin_play.add(chat_id)
         await self.chatsdb.update_one(
             {"_id": chat_id},
             {"$set": {"admin_play": not remove}},
@@ -310,63 +367,68 @@ class MongoDB:
         return user_id in self.users
 
     async def add_user(self, user_id: int) -> None:
-        if not await self.is_user(user_id):
-            self.users.append(user_id)
-            await self.usersdb.insert_one({"_id": user_id})
+        if user_id not in self.users:
+            self.users.add(user_id)
+            try:
+                await self.usersdb.insert_one({"_id": user_id})
+            except:
+                pass
 
     async def rm_user(self, user_id: int) -> None:
-        if await self.is_user(user_id):
-            self.users.remove(user_id)
+        if user_id in self.users:
+            self.users.discard(user_id)
             await self.usersdb.delete_one({"_id": user_id})
 
     async def get_users(self) -> list:
         if not self.users:
-            self.users.extend([user["_id"] async for user in self.usersdb.find()])
-        return self.users
+            async for user in self.usersdb.find():
+                self.users.add(user["_id"])
+        return list(self.users)
 
 
     async def migrate_coll(self) -> None:
         from bson import ObjectId
         logger.info("Migrating users and chats from old collections...")
 
-        musers, mchats, done = [], [], []
+        musers, mchats, done = [], [], set()
         ulist = [user async for user in self.db.tgusersdb.find()]
         ulist.extend([user async for user in self.usersdb.find()])
 
         for user in ulist:
             if isinstance(user.get("_id"), ObjectId):
                 user_id = int(user["user_id"])
-                if user_id in done:
-                    continue
-                done.append(user_id)
-                musers.append(user)
             else:
                 user_id = int(user["_id"])
-                if user_id in done:
-                    continue
-                done.append(user_id)
+            
+            if user_id not in done:
+                done.add(user_id)
                 musers.append({"_id": user_id})
+                
         await self.usersdb.drop()
         await self.db.tgusersdb.drop()
         if musers:
-            await self.usersdb.insert_many(musers)
+            try:
+                await self.usersdb.insert_many(musers, ordered=False)
+            except:
+                pass
 
+        done.clear()
         async for chat in self.chatsdb.find():
             if isinstance(chat.get("_id"), ObjectId):
                 chat_id = int(chat["chat_id"])
-                if chat_id in mchats:
-                    continue
-                done.append(chat_id)
-                mchats.append(chat)
             else:
                 chat_id = int(chat["_id"])
-                if chat_id in done:
-                    continue
-                done.append(chat_id)
+                
+            if chat_id not in done:
+                done.add(chat_id)
                 mchats.append({"_id": chat_id})
+                
         await self.chatsdb.drop()
         if mchats:
-            await self.chatsdb.insert_many(mchats)
+            try:
+                await self.chatsdb.insert_many(mchats, ordered=False)
+            except:
+                pass
 
         await self.cache.insert_one({"_id": "migrated"})
         logger.info("Migration completed.")
@@ -377,7 +439,7 @@ class MongoDB:
         if not self.sessions:
             sessions = []
             async for session in self.sessionsdb.find({"status": "active"}):
-                sessions.append(session)
+                 sessions.append(session)
             self.sessions = sessions
         return self.sessions
 

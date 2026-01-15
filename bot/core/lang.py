@@ -53,7 +53,7 @@ class Language:
                 elif hasattr(fallen, "message"):
                     chat = fallen.message.chat
 
-                if chat.id in db.blacklisted:
+                if chat.id in db.blacklisted_chats or chat.id in db.blacklisted_users:
                     logger.warning(f"Chat {chat.id} is blacklisted, leaving...")
                     return await chat.leave()
 

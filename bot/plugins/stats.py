@@ -28,7 +28,7 @@ async def _stats(_, m: types.Message):
         app.name,
         len(userbot.clients),
         config.AUTO_LEAVE,
-        len(db.blacklisted),
+        len(db.blacklisted_chats) + len(db.blacklisted_users),
         len(app.bl_users),
         len(app.sudoers),
         len(await db.get_chats()),

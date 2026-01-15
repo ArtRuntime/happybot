@@ -71,7 +71,7 @@ class TgCall(PyTgCalls):
 
             if media.file_path and os.path.exists(media.file_path):
                 try:
-                    os.remove(media.file_path)
+                    await asyncio.to_thread(os.remove, media.file_path)
                 except:
                     pass
             
@@ -79,7 +79,7 @@ class TgCall(PyTgCalls):
             thumb_path = f"cache/{media.id}.png"
             if os.path.exists(thumb_path):
                 try:
-                    os.remove(thumb_path)
+                    await asyncio.to_thread(os.remove, thumb_path)
                 except:
                     pass
         
@@ -89,7 +89,7 @@ class TgCall(PyTgCalls):
             for item in all_queued:
                 if item.file_path and os.path.exists(item.file_path):
                     try:
-                        os.remove(item.file_path)
+                        await asyncio.to_thread(os.remove, item.file_path)
                         logger.info(f"Cleaned up cached file: {item.file_path}")
                     except:
                         pass
@@ -97,7 +97,7 @@ class TgCall(PyTgCalls):
                 thumb_path = f"cache/{item.id}.png"
                 if os.path.exists(thumb_path):
                     try:
-                        os.remove(thumb_path)
+                        await asyncio.to_thread(os.remove, thumb_path)
                     except:
                         pass
 
@@ -172,11 +172,10 @@ class TgCall(PyTgCalls):
                 next_track.file_path = await yt.download(next_track.id, video=next_track.video)
             
             # Check if cancelled after download (cleanup if needed)
-            if chat_id in self._preload_cancelled:
                 self._preload_cancelled.discard(chat_id)
                 if next_track.file_path and os.path.exists(next_track.file_path):
                     try:
-                        os.remove(next_track.file_path)
+                        await asyncio.to_thread(os.remove, next_track.file_path)
                         logger.info(f"Autoplay preload: Cleaned cancelled download: {next_track.file_path}")
                     except:
                         pass
@@ -516,7 +515,7 @@ class TgCall(PyTgCalls):
                     logger.error(f"Failed to cleanup buttons for {old_media.title}: {e}")
             if old_media.file_path and os.path.exists(old_media.file_path):
                 try:
-                    os.remove(old_media.file_path)
+                    await asyncio.to_thread(os.remove, old_media.file_path)
                 except:
                     pass
             

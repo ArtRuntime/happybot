@@ -12,9 +12,11 @@ class Userbot(Client):
     def __init__(self):
         """
         Initializes the userbot with dynamic session loading from MongoDB.
+        Uses Lazy Loading to handle infinite assistants efficiently.
         """
-        self.clients = []
+        self.clients = [] # Keep list for back-compat if needed, but mostly rely on map
         self._client_map = {}  # Maps session name to client instance
+        self._starting_locks = {} # Lock for concurrent start requests
 
     async def _create_client(self, session_string: str, name: str) -> Client:
         """Create a new Pyrogram client from session string."""
@@ -24,22 +26,16 @@ class Userbot(Client):
             api_hash=config.API_HASH,
             session_string=session_string,
             proxy=config.PROXY_DICT,
+            no_updates=True, # We don't need updates for assistants usually
         )
         return client
 
     async def add_client(self, session_string: str, name: str) -> Client:
         """
-        Dynamically add a new client (hot-reload).
-        
-        Args:
-            session_string: Pyrogram session string
-            name: Unique identifier for this session
-            
-        Returns:
-            The started client instance
+        Dynamically add and start a new client (hot-reload).
         """
         if name in self._client_map:
-            raise ValueError(f"Client with name '{name}' already exists")
+            return self._client_map[name]
         
         client = await self._create_client(session_string, name)
         await client.start()
@@ -48,13 +44,13 @@ class Userbot(Client):
             await client.send_message(config.LOGGER_ID, f"Assistant '{name}' Started")
         except Exception as e:
             logger.error(f"Assistant '{name}' failed to send message in log group: {e}")
-            await client.stop()
-            raise
+            # Don't stop, just log
         
         # Set client properties
         me = await client.get_me()
         client.id = me.id
-        client.name = me.first_name
+        client.name = name  # Use our internal name
+        client.user_name = me.first_name # Telegram name
         client.username = me.username
         client.mention = me.mention
         
@@ -66,23 +62,56 @@ class Userbot(Client):
         except:
             pass
         
+        # Register with PyTgCalls
+        from bot import anon
+        await anon.add_pytgcalls_client(client)
+        
         logger.info(f"Assistant '{name}' started as @{client.username}")
         return client
+
+    async def get_client_by_name(self, name: str) -> Client:
+        """
+        Get an assistant client by name.
+        If it's not running, fetch from DB and start it (Lazy Load).
+        """
+        if name in self._client_map:
+            return self._client_map[name]
+            
+        import asyncio
+        from bot import db
+        
+        # Use a lock to prevent race conditions if multiple tasks request same inactive assistant
+        if name not in self._starting_locks:
+            self._starting_locks[name] = asyncio.Lock()
+            
+        async with self._starting_locks[name]:
+            # Double check after acquiring lock
+            if name in self._client_map:
+                return self._client_map[name]
+                
+            logger.info(f"Lazy loading assistant '{name}'...")
+            session_doc = await db.get_session_by_name(name)
+            if not session_doc:
+                raise ValueError(f"Session '{name}' not found in database")
+                
+            client = await self.add_client(
+                session_doc["session_string"],
+                session_doc["name"]
+            )
+            return client
 
     async def remove_client(self, name: str) -> bool:
         """
         Dynamically remove a client (hot-reload).
-        
-        Args:
-            name: Session name to remove
-            
-        Returns:
-            True if removed, False if not found
         """
         if name not in self._client_map:
             return False
         
         client = self._client_map[name]
+        
+        # Stop PyTgCalls client first
+        from bot import anon
+        await anon.remove_pytgcalls_client(client)
         
         # Stop the client
         try:
@@ -91,7 +120,8 @@ class Userbot(Client):
             pass
         
         # Remove from lists
-        self.clients.remove(client)
+        if client in self.clients:
+            self.clients.remove(client)
         del self._client_map[name]
         
         logger.info(f"Assistant '{name}' stopped and removed")
@@ -99,8 +129,8 @@ class Userbot(Client):
 
     async def boot(self):
         """
-        Load and start all active sessions from database and .env.
-        Performs auto-migration of env sessions to DB.
+        Perform auto-migration of env sessions.
+        Note: We NO LONGER start all sessions here. They are lazy loaded.
         """
         from bot import db
         
@@ -128,35 +158,33 @@ class Userbot(Client):
                 except Exception as e:
                     logger.error(f"Failed to migrate {env_name}: {e}")
         
-        # Load all active sessions from database
-        sessions = await db.get_sessions()
-        if not sessions:
-            logger.warning("No active sessions found in database!")
-            return
-        
-        logger.info(f"Loading {len(sessions)} session(s) from database...")
-        for session_doc in sessions:
-            try:
-                await self.add_client(
-                    session_doc["session_string"],
-                    session_doc["name"]
-                )
-            except Exception as e:
-                error_msg = str(e)
-                logger.error(f"Failed to load session '{session_doc['name']}': {e}")
-                
-                # Auto-disable sessions with auth errors
-                if "AUTH_KEY_UNREGISTERED" in error_msg or "SESSION_REVOKED" in error_msg:
-                    logger.warning(f"Auto-disabling invalid session '{session_doc['name']}'")
-                    try:
-                        await db.remove_session(session_doc["name"])
-                        logger.info(f"Session '{session_doc['name']}' marked as inactive")
-                    except Exception as db_err:
-                        logger.error(f"Failed to auto-disable session: {db_err}")
+        # Always start the first 3 assistants for readiness
+        logger.info("Pre-loading top 3 assistants...")
+        try:
+            all_sessions = await db.get_all_sessions(include_inactive=False)
+            # Sort by name to ensure consistent "Assistant 1/2/3" loading
+            all_sessions.sort(key=lambda x: x["name"])
+            
+            count = 0
+            for session in all_sessions:
+                if count >= 3:
+                    break
+                try:
+                    await self.add_client(session["session_string"], session["name"])
+                    count += 1
+                except Exception as e:
+                    logger.error(f"Failed to pre-load assistant {session['name']}: {e}")
+                    
+            logger.info(f"Pre-loaded {count} assistants.")
+        except Exception as e:
+            logger.error(f"Failed to pre-load assistants: {e}")
+            
+        logger.info("Userbot Manager initialized (Lazy Loading Enabled)")
+
 
     async def exit(self):
         """Stop all assistant clients."""
-        for client in self.clients[:]:  # Use slice to avoid modification during iteration
+        for client in self.clients[:]:
             try:
                 await client.stop()
             except:

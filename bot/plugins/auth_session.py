@@ -41,11 +41,16 @@ async def stop_login(_, message: types.Message):
     else:
         await message.reply_text("ℹ️ No active login process found.")
 
-@app.on_message(filters.text & filters.private)
+# Filter to check if user is in login state
+async def _is_logging_in(_, __, message):
+    return message.from_user and message.from_user.id in login_states
+
+is_logging_in = filters.create(_is_logging_in)
+
+@app.on_message(filters.text & filters.private & is_logging_in)
 async def auth_handler(_, message: types.Message):
     user_id = message.from_user.id
-    if user_id not in login_states:
-        return
+    # Filter already checked existence in login_states
 
     state_data = login_states[user_id]
     step = state_data["state"]
