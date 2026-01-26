@@ -50,9 +50,6 @@ class Config:
         # yt-dlp logging
         self.YTDLP_VERBOSE = getenv("YTDLP_VERBOSE", "false").lower() in ("true", "1", "yes")
         
-        # Anime API
-        self.ANIME_API_URL = getenv("ANIME_API_URL", "https://anime-api2-three.vercel.app")
-        
         # Player Update Interval (seconds) - Default 7s zada jaldi krenge to rate limit laga jayega
         self.PLAYER_UPDATE_INTERVAL = int(getenv("PLAYER_UPDATE_INTERVAL", 7))
         

@@ -11,6 +11,94 @@ from bot import app, config, db, logger, queue, yt
 from bot.helpers import utils
 
 
+async def join_assistant(m: types.Message, chat_id: int):
+    """
+    Helper to join assistant to chat if not already present.
+    Should be called AFTER initial response to avoid latency.
+    """
+    if chat_id in db.active_calls:
+        return True
+
+    try:
+        client = await db.get_client(chat_id)
+    except (ValueError, KeyError):
+        return await m.reply_text(
+            "⚠️ **No Assistant Found!**\n\n"
+            "The bot requires an assistant account to join the voice chat.\n"
+            "Please go to my PM and send /login to add an assistant."
+        )
+
+    try:
+        try:
+            member = await app.get_chat_member(chat_id, client.id)
+        except errors.PeerIdInvalid:
+            raise errors.UserNotParticipant
+
+        if member.status in [
+            enums.ChatMemberStatus.BANNED,
+            enums.ChatMemberStatus.RESTRICTED,
+        ]:
+            try:
+                await app.unban_chat_member(
+                    chat_id=chat_id, user_id=client.id
+                )
+            except:
+                return await m.reply_text(
+                    m.lang["play_banned"].format(
+                        app.name,
+                        client.id,
+                        client.mention,
+                        f"@{client.username}" if client.username else None,
+                    )
+                )
+    except errors.ChatAdminRequired:
+        return await m.reply_text(m.lang["admin_required"])
+    except (errors.UserNotParticipant, errors.exceptions.bad_request_400.UserNotParticipant):
+        if m.chat.username:
+            invite_link = m.chat.username
+            try:
+                await client.resolve_peer(invite_link)
+            except:
+                pass
+        else:
+            try:
+                invite_link = (await app.get_chat(chat_id)).invite_link
+                if not invite_link:
+                    invite_link = await app.export_chat_invite_link(chat_id)
+            except errors.ChatAdminRequired:
+                return await m.reply_text(m.lang["admin_required"])
+            except Exception as ex:
+                return await m.reply_text(
+                    m.lang["play_invite_error"].format(type(ex).__name__)
+                )
+
+        umm = await m.reply_text(m.lang["play_invite"].format(app.name))
+        await asyncio.sleep(2)
+        try:
+            await client.join_chat(invite_link)
+        except errors.UserAlreadyParticipant:
+            pass
+        except errors.InviteRequestSent:
+            await asyncio.sleep(2)
+            try:
+                await client.approve_chat_join_request(chat_id, client.id)
+            except errors.HideRequesterMissing:
+                pass
+            except Exception as ex:
+                return await umm.edit_text(
+                    m.lang["play_invite_error"].format(type(ex).__name__)
+                )
+        except Exception as ex:
+            logger.error(f"Error joining chat - {chat_id}: {ex}")
+            return await umm.edit_text(
+                m.lang["play_invite_error"].format(type(ex).__name__)
+            )
+
+        await umm.delete()
+        await client.resolve_peer(chat_id)
+        
+    return True
+
 def checkUB(play):
     async def wrapper(_, m: types.Message):
         if not m.from_user:
@@ -45,86 +133,6 @@ def checkUB(play):
                 and not m.from_user.id in app.sudoers
             ):
                 return await m.reply_text(m.lang["play_admin"])
-
-        if chat_id not in db.active_calls:
-            try:
-                client = await db.get_client(chat_id)
-            except (ValueError, KeyError):
-                return await m.reply_text(
-                    "⚠️ **No Assistant Found!**\n\n"
-                    "The bot requires an assistant account to join the voice chat.\n"
-                    "Please go to my PM and send /login to add an assistant."
-                )
-
-            try:
-                try:
-                    member = await app.get_chat_member(chat_id, client.id)
-                except errors.PeerIdInvalid:
-                    # If Bot doesn't know the assistant, treat it as not a participant
-                    raise errors.UserNotParticipant
-
-                if member.status in [
-                    enums.ChatMemberStatus.BANNED,
-                    enums.ChatMemberStatus.RESTRICTED,
-                ]:
-                    try:
-                        await app.unban_chat_member(
-                            chat_id=chat_id, user_id=client.id
-                        )
-                    except:
-                        return await m.reply_text(
-                            m.lang["play_banned"].format(
-                                app.name,
-                                client.id,
-                                client.mention,
-                                f"@{client.username}" if client.username else None,
-                            )
-                        )
-            except errors.ChatAdminRequired:
-                return await m.reply_text(m.lang["admin_required"])
-            except (errors.UserNotParticipant, errors.exceptions.bad_request_400.UserNotParticipant):
-                if m.chat.username:
-                    invite_link = m.chat.username
-                    try:
-                        await client.resolve_peer(invite_link)
-                    except:
-                        pass
-                else:
-                    try:
-                        invite_link = (await app.get_chat(chat_id)).invite_link
-                        if not invite_link:
-                            invite_link = await app.export_chat_invite_link(chat_id)
-                    except errors.ChatAdminRequired:
-                        return await m.reply_text(m.lang["admin_required"])
-                    except Exception as ex:
-                        return await m.reply_text(
-                            m.lang["play_invite_error"].format(type(ex).__name__)
-                        )
-
-                umm = await m.reply_text(m.lang["play_invite"].format(app.name))
-                await asyncio.sleep(2)
-                try:
-                    await client.join_chat(invite_link)
-                except errors.UserAlreadyParticipant:
-                    pass
-                except errors.InviteRequestSent:
-                    await asyncio.sleep(2)
-                    try:
-                        await client.approve_chat_join_request(chat_id, client.id)
-                    except errors.HideRequesterMissing:
-                        pass
-                    except Exception as ex:
-                        return await umm.edit_text(
-                            m.lang["play_invite_error"].format(type(ex).__name__)
-                        )
-                except Exception as ex:
-                    logger.error(f"Error joining chat - {chat_id}: {ex}")
-                    return await umm.edit_text(
-                        m.lang["play_invite_error"].format(type(ex).__name__)
-                    )
-
-                await umm.delete()
-                await client.resolve_peer(chat_id)
 
         # Always try to delete command message to keep chat clean
         try:

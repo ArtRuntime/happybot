@@ -216,7 +216,7 @@ class Inline:
         genres = [
             "pop", "rock", "hiphop", "electronic", "jazz", "classical",
             "metal", "country", "rnb", "indie", "latin", "kpop",
-            "anime", "lofi", "blues", "reggae", "disco", "punk",
+            "lofi", "blues", "reggae", "disco", "punk",
             "ambient", "random"
         ]
         

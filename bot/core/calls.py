@@ -165,8 +165,8 @@ class TgCall(PyTgCalls):
             
             # Get file/stream URL
             from bot import config
-            if config.ENABLE_DIRECT_STREAMING and not next_track.url.startswith("t.me"):
-                # Direct streaming for YouTube/external URLs
+            if config.ENABLE_DIRECT_STREAMING and not next_track.url.startswith("t.me") and not next_track.video:
+                # Direct streaming for YouTube/external URLs (Audio Only)
                 next_track.file_path = await yt.get_stream_url(next_track.id, video=next_track.video)
                 if not next_track.file_path:
                     logger.warning(f"Stream URL extraction failed, falling back to download")
@@ -263,8 +263,8 @@ class TgCall(PyTgCalls):
         from bot import config
         
         try:
-            # 1. Try Direct Streaming (if enabled)
-            if config.ENABLE_DIRECT_STREAMING and track.req_type != "telegram" and not track.url.startswith("t.me"):
+            # 1. Try Direct Streaming (if enabled) - Audio Only
+            if config.ENABLE_DIRECT_STREAMING and track.req_type != "telegram" and not track.url.startswith("t.me") and not track.video:
                 track.file_path = await yt.get_stream_url(track.id, video=track.video)
                 if track.file_path:
                     logger.info(f"✅ Track prepared (Stream): {track.title}")
@@ -303,15 +303,11 @@ class TgCall(PyTgCalls):
         # Build ffmpeg parameters
         ffmpeg_params = f"-ss {seek_time}" if seek_time > 1 else None
         
-        # Add headers for anime streams to bypass 403 Forbidden
-        if getattr(media, 'req_type', None) == 'anime' and media.file_path.startswith("http"):
-            headers = (
-                "Referer: https://hianime.to\r\n"
-                "Origin: https://hianime.to\r\n"
-                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            )
-            header_param = f'-headers "{headers}"'
-            ffmpeg_params = f"{header_param} {ffmpeg_params}" if ffmpeg_params else header_param
+        # Add robust networking flags for all HTTP streams to prevent video dropouts
+        if media.file_path.startswith("http"):
+             # reconnect flags + increased analyze duration for better probing
+             net_flags = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -analyzeduration 15000000 -probesize 100000000"
+             ffmpeg_params = f"{net_flags} {ffmpeg_params}" if ffmpeg_params else net_flags
         
         stream = types.MediaStream(
             media_path=media.file_path,
@@ -397,9 +393,7 @@ class TgCall(PyTgCalls):
                 
                 
                 # Proactive autoplay preload - predict and download next song in background
-                # Skip autoplay for anime - only works for music
-                is_anime = getattr(media, 'req_type', None) == 'anime'
-                if autoplay_status and not await queue.get_next(chat_id, check=True) and not is_anime:
+                if autoplay_status and not await queue.get_next(chat_id, check=True):
                     # Cancel any existing preload task to prevent duplicates
                     if chat_id in self._preload_tasks:
                         old_task = self._preload_tasks[chat_id]
@@ -422,12 +416,7 @@ class TgCall(PyTgCalls):
                     await message.edit_text("📥 Stream failed, downloading...")
                     logger.warning(f"Stream failed for {media.title}, falling back to download")
                     
-                    # For anime, download from the stream URL directly
-                    if getattr(media, 'req_type', None) == 'anime':
-                        logger.info(f"Downloading anime from URL: {media.file_path}")
-                        new_path = await yt.download(media.file_path, video=media.video)
-                    else:
-                        new_path = await yt.download(media.id, video=media.video)
+                    new_path = await yt.download(media.id, video=media.video)
                     
                     if new_path:
                         media.file_path = new_path
@@ -436,36 +425,10 @@ class TgCall(PyTgCalls):
                 except Exception as e:
                     logger.error(f"Fallback download failed: {e}")
                     
-                    # Show specific error for anime 403 Forbidden
-                    if getattr(media, 'req_type', None) == 'anime' and '403' in str(e):
-                        await message.edit_text(
-                            "❌ **Anime Stream Blocked (403 Forbidden)**\n\n"
-                            "The anime streaming server is blocked or requires authentication.\n"
-                            "This usually means the CDN has geo-restrictions or the URL has expired.\n\n"
-                            "**Try:**\n"
-                            "• Selecting a different server using 🌐 Server button\n"
-                            "• Trying another anime\n"
-                            "• Using a VPN if available"
-                        )
-                        return  # Don't play next
-
-            # Don't auto-play next for anime failures
-            if getattr(media, 'req_type', None) != 'anime':
-                # Increment failure counter to prevent infinite loops
-                self._consecutive_failures[chat_id] += 1
-                await message.edit_text(_lang["error_no_audio"])
-                await self.play_next(chat_id)
-            else:
-                # For anime, show error and stop - don't trigger music autoplay
-                await message.edit_text(
-                    "❌ **Failed to play anime**\n\n"
-                    "The stream failed and download also failed.\n\n"
-                    "**Try:**\n"
-                    "• Selecting a different server\n"
-                    "• Trying another episode\n"
-                    "• Checking your connection"
-                )
-                await self.stop(chat_id)
+            # Increment failure counter to prevent infinite loops
+            self._consecutive_failures[chat_id] += 1
+            await message.edit_text(_lang["error_no_audio"])
+            await self.play_next(chat_id)
         except (ConnectionNotFound, TelegramServerError):
             await self.stop(chat_id)
             await message.edit_text(_lang["error_tg_server"])
@@ -545,7 +508,7 @@ class TgCall(PyTgCalls):
 
         if not media:
             # Autoplay ONLY for YouTube search and YouTube/YT Music URLs
-            # Everything else (Telegram files, anime, playlists) = no autoplay
+            # Everything else (Telegram files, playlists) = no autoplay
             if old_media:
                 old_req_type = getattr(old_media, 'req_type', None)
                 
@@ -603,14 +566,16 @@ class TgCall(PyTgCalls):
         
         # Show appropriate message based on streaming/downloading
         from bot import config
-        if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
+        if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me") and not media.video:
             msg = await app.send_message(chat_id=chat_id, text="⏭️ Loading next track...")
         else:
             msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
         
         # Download or get stream URL
         if media.req_type != "telegram":
-            if config.ENABLE_DIRECT_STREAMING and not media.url.startswith("t.me"):
+            # Direct streaming for YouTube/external URLs (Audio Only)
+            # We force download for video because Telegram streaming is unstable for video
+            if config.ENABLE_DIRECT_STREAMING and not media.url.startswith("t.me") and not media.video:
                 # Direct streaming for YouTube/external URLs
                 logger.info(f"🎵 Using direct streaming for: {media.title}")
                 media.file_path = await yt.get_stream_url(media.id, video=media.video)

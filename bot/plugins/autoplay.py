@@ -25,7 +25,7 @@ async def update_player_button(chat_id: int, autoplay_status):
 async def autoplay_cmd(_, m: types.Message):
     genres = [
         "pop", "rock", "hiphop", "electronic", "jazz", "classical", "metal", 
-        "country", "rnb", "indie", "latin", "kpop", "anime", "lofi", 
+        "country", "rnb", "indie", "latin", "kpop", "lofi", 
         "blues", "reggae", "disco", "punk", "ambient", "random"
     ]
     usage = f"<b>Usage:</b>\n/autoplay [on|smart|off]\n<b>Genres:</b> {', '.join(genres)}"

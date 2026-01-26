@@ -9,7 +9,7 @@ from pyrogram import filters, types
 
 from bot import anon, app, config, db, lang, queue, tg, userbot, yt
 from bot.helpers import buttons, utils
-from bot.helpers._play import checkUB
+from bot.helpers._play import checkUB, join_assistant
 
 
 async def playlist_to_queue(chat_id: int, tracks: list) -> str:
@@ -42,6 +42,11 @@ async def play_hndlr(
             "Please go to my PM and send /login to add an assistant."
         )
     sent = await m.reply_text(m.lang["play_searching"])
+    
+    # Try to join VC in background (if not joined) while searching
+    # This prevents the initial response delay
+    if not await join_assistant(m, m.chat.id):
+        return
     file = None
     mention = m.from_user.mention
     tracks = []
@@ -181,7 +186,7 @@ async def play_hndlr(
             file.file_path = fname
         else:
             # Use direct streaming or download based on config
-            if config.ENABLE_DIRECT_STREAMING and file.req_type != "telegram" and not file.url.startswith("t.me"):
+            if config.ENABLE_DIRECT_STREAMING and file.req_type != "telegram" and not file.url.startswith("t.me") and not video:
                 # Direct streaming for YouTube/external URLs
                 await sent.edit_text("🔎 Loading Stream...")
                 try:
