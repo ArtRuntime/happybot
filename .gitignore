@@ -1,13 +1,12 @@
 .env
 .cache
-
 .idea
 .DS_Store
 venv/
 cache/
 downloads/
 __pycache__/
-# bot/cookies/*
+bot/cookies/*
 log.txt
 !requirements.txt
 *.session
