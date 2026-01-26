@@ -165,8 +165,7 @@ class MongoDB:
                  if not all_sessions:
                      # Fallback if no sessions in DB (shouldn't happen if initialized properly)
                      logger.error("No active sessions available to assign!")
-                     # Return first configured one? Or error
-                     return None
+                     raise ValueError("No active sessions available")
                      
                  # Pick random
                  selected = all_sessions[randint(0, len(all_sessions) - 1)]

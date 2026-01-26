@@ -54,82 +54,87 @@ async def _controls(_, query: types.CallbackQuery):
 
     await query.answer(query.lang["processing"], show_alert=True)
 
-    if action == "pause":
-        if not await db.playing(chat_id):
-            return await query.answer(
-                query.lang["play_already_paused"], show_alert=True
-            )
-        await anon.pause(chat_id)
-        if qaction:
-            return await query.edit_message_reply_markup(
-                reply_markup=buttons.queue_markup(chat_id, query.lang["paused"], False)
-            )
-        status = query.lang["paused"]
-        reply = query.lang["play_paused"].format(user)
+    try:
+        if action == "pause":
+            if not await db.playing(chat_id):
+                return await query.answer(
+                    query.lang["play_already_paused"], show_alert=True
+                )
+            await anon.pause(chat_id)
+            if qaction:
+                return await query.edit_message_reply_markup(
+                    reply_markup=buttons.queue_markup(chat_id, query.lang["paused"], False)
+                )
+            status = query.lang["paused"]
+            reply = query.lang["play_paused"].format(user)
 
-    elif action == "resume":
-        if await db.playing(chat_id):
-            return await query.answer(query.lang["play_not_paused"], show_alert=True)
-        await anon.resume(chat_id)
-        if qaction:
-            return await query.edit_message_reply_markup(
-                reply_markup=buttons.queue_markup(chat_id, query.lang["playing"], True)
-            )
-        reply = query.lang["play_resumed"].format(user)
+        elif action == "resume":
+            if await db.playing(chat_id):
+                return await query.answer(query.lang["play_not_paused"], show_alert=True)
+            await anon.resume(chat_id)
+            if qaction:
+                return await query.edit_message_reply_markup(
+                    reply_markup=buttons.queue_markup(chat_id, query.lang["playing"], True)
+                )
+            reply = query.lang["play_resumed"].format(user)
 
-    elif action == "skip":
-        await anon.play_next(chat_id)
-        status = query.lang["skipped"]
-        reply = query.lang["play_skipped"].format(user)
+        elif action == "skip":
+            await anon.play_next(chat_id)
+            status = query.lang["skipped"]
+            reply = query.lang["play_skipped"].format(user)
 
-    elif action == "force":
-        position = int(args[3])  # Now it's a position, not item_id
-        _q = await queue.get_queue(chat_id)
-        media = _q[position] if position < len(_q) else None
-        
-        if not media:
-            return await query.edit_message_text(query.lang["play_expired"])
+        elif action == "force":
+            position = int(args[3])  # Now it's a position, not item_id
+            _q = await queue.get_queue(chat_id)
+            media = _q[position] if position < len(_q) else None
+            
+            if not media:
+                return await query.edit_message_text(query.lang["play_expired"])
 
-        m_id = (await queue.get_current(chat_id)).message_id
-        await queue.force_add(chat_id, media, remove=position)
-        try:
-            await app.delete_messages(
-                chat_id=chat_id, message_ids=[m_id, media.message_id], revoke=True
-            )
-            media.message_id = None
-        except:
-            pass
+            m_id = (await queue.get_current(chat_id)).message_id
+            await queue.force_add(chat_id, media, remove=position)
+            try:
+                await app.delete_messages(
+                    chat_id=chat_id, message_ids=[m_id, media.message_id], revoke=True
+                )
+                media.message_id = None
+            except:
+                pass
 
-        # Show appropriate message
-        from bot import config
-        if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
-            msg_text = "⏭️ Loading next track..."
-        else:
-            msg_text = query.lang["play_next"]
-
-        msg = await app.send_message(chat_id=chat_id, text=msg_text)
-        if not media.file_path:
-            # Use streaming if enabled
+            # Show appropriate message
+            from bot import config
             if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
-                media.file_path = await yt.get_stream_url(media.id, video=media.video)
-                if not media.file_path:
-                    media.file_path = await yt.download(media.id, video=media.video)
+                msg_text = "⏭️ Loading next track..."
             else:
-                media.file_path = await yt.download(media.id, video=media.video)
-        media.message_id = msg.id
-        return await anon.play_media(chat_id, msg, media)
+                msg_text = query.lang["play_next"]
 
-    elif action == "replay":
-        media = await queue.get_current(chat_id)
-        media.user = user
-        await anon.replay(chat_id)
-        status = query.lang["replayed"]
-        reply = query.lang["play_replayed"].format(user)
+            msg = await app.send_message(chat_id=chat_id, text=msg_text)
+            if not media.file_path:
+                # Use streaming if enabled
+                if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
+                    media.file_path = await yt.get_stream_url(media.id, video=media.video)
+                    if not media.file_path:
+                        media.file_path = await yt.download(media.id, video=media.video)
+                else:
+                    media.file_path = await yt.download(media.id, video=media.video)
+            media.message_id = msg.id
+            return await anon.play_media(chat_id, msg, media)
 
-    elif action == "stop":
-        await anon.stop(chat_id)
-        status = query.lang["stopped"]
-        reply = query.lang["play_stopped"].format(user)
+        elif action == "replay":
+            media = await queue.get_current(chat_id)
+            media.user = user
+            await anon.replay(chat_id)
+            status = query.lang["replayed"]
+            reply = query.lang["play_replayed"].format(user)
+
+        elif action == "stop":
+            await anon.stop(chat_id)
+            status = query.lang["stopped"]
+            reply = query.lang["play_stopped"].format(user)
+    except ValueError as e:
+        if "No active sessions" in str(e):
+             return await query.answer("⚠️ No Assistant Found!\nPlease login first with /login in PM.", show_alert=True)
+        raise e
 
     try:
         if action in ["skip", "replay", "stop"]:

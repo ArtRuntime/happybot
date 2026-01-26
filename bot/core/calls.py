@@ -35,7 +35,10 @@ class TgCall(PyTgCalls):
         return await client.resume(chat_id)
 
     async def stop(self, chat_id: int) -> None:
-        client = await db.get_assistant(chat_id)
+        try:
+            client = await db.get_assistant(chat_id)
+        except Exception:
+            client = None
         
         # Cancel any active downloads for this chat
         yt.cancel_downloads(chat_id)
@@ -108,7 +111,8 @@ class TgCall(PyTgCalls):
             pass
 
         try:
-            await client.leave_call(chat_id, close=False)
+            if client:
+                await client.leave_call(chat_id, close=False)
         except:
             pass
 

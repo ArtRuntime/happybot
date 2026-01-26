@@ -47,7 +47,15 @@ def checkUB(play):
                 return await m.reply_text(m.lang["play_admin"])
 
         if chat_id not in db.active_calls:
-            client = await db.get_client(chat_id)
+            try:
+                client = await db.get_client(chat_id)
+            except (ValueError, KeyError):
+                return await m.reply_text(
+                    "⚠️ **No Assistant Found!**\n\n"
+                    "The bot requires an assistant account to join the voice chat.\n"
+                    "Please go to my PM and send /login to add an assistant."
+                )
+
             try:
                 try:
                     member = await app.get_chat_member(chat_id, client.id)
