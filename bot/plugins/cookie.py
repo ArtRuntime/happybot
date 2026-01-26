@@ -35,7 +35,8 @@ async def add_fallback(client, message: types.Message):
             action = "Saved"
             
         # Download file
-        await message.download(file_name=path)
+        target_msg = message.reply_to_message if message.reply_to_message and message.reply_to_message.document else message
+        await target_msg.download(file_name=path)
         
         await message.reply_text(f"✅ Fallback cookie {action.lower()} successfully!\n\nThis will be used automatically if primary cookies fail with 'Sign in' error.")
         logger.info(f"Fallback cookie {action.lower()} by {message.from_user.mention}")

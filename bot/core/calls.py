@@ -717,3 +717,97 @@ class TgCall(PyTgCalls):
         for ub in userbot.clients:
             await self.add_pytgcalls_client(ub)
         logger.info("PyTgCalls client(s) started.")
+        
+        # Restore sessions after boot
+        asyncio.create_task(self.restore_sessions())
+
+    async def restore_sessions(self) -> None:
+        """
+        Scan Redis for active sessions and restore playback after restart.
+        """
+        from bot import config
+        if not config.RESTORE_ON_STARTUP:
+            logger.info("Session Restoration: Disabled by config.")
+            return
+
+        logger.info("Session Restoration: Scanning for active sessions...")
+        prefix = config.REDIS_PREFIX
+        
+        # Use SCAN to find keys preventing blocking
+        pattern = f"{prefix}current:*"
+        cursor = 0
+        restored_count = 0
+        
+        try:
+            while True:
+                cursor, keys = await queue.rds.scan(cursor, match=pattern, count=100)
+                
+                for key in keys:
+                    try:
+                        # Extract chat_id from key "happybot:current:123456"
+                        chat_id = int(key.split(":")[-1])
+                        
+                        # Check if session is valid (VC exists)
+                        try:
+                            client = await db.get_assistant(chat_id)
+                        except:
+                            # No assistant or error -> skip
+                            continue
+                            
+                        # Get media data
+                        media = await queue.get_current(chat_id)
+                        if not media:
+                            continue
+                            
+                        # Skip Telegram file restoration (often expired links or costly to re-download)
+                        if getattr(media, 'req_type', None) == 'telegram':
+                             logger.info(f"Session Restoration: Skipping Telegram file for chat {chat_id}")
+                             await self.stop(chat_id)
+                             continue
+
+                        # Resume playback
+                        logger.info(f"Session Restoration: Restoring chat {chat_id} - '{media.title}'")
+                        
+                        try:
+                            # Re-join and play
+                            # Use stored time if available, or 0
+                            seek_time = media.time if hasattr(media, 'time') else 0
+                            
+                            # Add to active calls BEFORE playing to pass checks
+                            await db.add_call(chat_id)
+                            
+                            # Need message object for UI updates. 
+                            # We can't easily get the original message object, but play_media needs it to edit.
+                            # We will try to fetch the message if message_id exists
+                            msg = None
+                            if media.message_id:
+                                try:
+                                    msg = await app.get_messages(chat_id, media.message_id)
+                                except:
+                                    pass
+                            
+                            if not msg:
+                                # Create a fresh status message if original is lost
+                                msg = await app.send_message(chat_id, "🔄 Restoring playback...")
+                            
+                            await self.play_media(chat_id, msg, media, seek_time=seek_time)
+                            restored_count += 1
+                            
+                            # Add small delay to prevent floodwaits
+                            await asyncio.sleep(2)
+                            
+                        except Exception as e:
+                            logger.error(f"Session Restoration: Failed for {chat_id}: {e}")
+                            await self.stop(chat_id)
+                            
+                    except Exception as e:
+                        logger.error(f"Session Restoration: Key error {key}: {e}")
+                
+                if cursor == 0:
+                    break
+                    
+            logger.info(f"Session Restoration: Completed. Restored {restored_count} sessions.")
+            
+        except Exception as e:
+            logger.error(f"Session Restoration: Critical Fail: {e}")
+

@@ -56,6 +56,9 @@ class Config:
         # Player Update Interval (seconds) - Default 7s zada jaldi krenge to rate limit laga jayega
         self.PLAYER_UPDATE_INTERVAL = int(getenv("PLAYER_UPDATE_INTERVAL", 7))
         
+        # Session Restoration
+        self.RESTORE_ON_STARTUP: bool = getenv("RESTORE_ON_STARTUP", "true").lower() in ("true", "1", "yes")
+
         # Proxy Configuration
         self.PROXY_HOST = getenv("PROXY_HOST", "127.0.0.1")
         self.PROXY_PORT = int(getenv("PROXY_PORT") or getenv("PROXY_HTTP_PORT") or 0)
