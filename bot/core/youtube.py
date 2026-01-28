@@ -190,32 +190,76 @@ class YouTube:
                 
             data = results['result'][0]
             video_id = data.get('id')
+            
             title = data.get('title')
+            if not title: title = "Unknown Title"
             
-            # Extract duration (already string in py-yt-search e.g. "4:30")
+            # Extract duration safely
             duration = data.get('duration')
+            if not duration: duration = "0:00"
             
-            # Extract channel
-            channel_name = data.get('channel', {}).get('name', 'Unknown')
+            # Extract channel safely (handle None for 'channel' key)
+            channel_data = data.get('channel') or {}
+            channel_name = channel_data.get('name') or "Unknown"
             
-            # Extract thumbnail
-            thumbnails = data.get('thumbnails', [])
-            thumbnail = thumbnails[-1].get('url', "") if thumbnails else None
+            # Extract thumbnail safely (handle None for 'thumbnails' key)
+            thumbnails = data.get('thumbnails') or []
+            thumbnail = thumbnails[-1].get('url', "") if (isinstance(thumbnails, list) and thumbnails) else None
+            
+            # Safe view count extraction
+            wc_data = data.get('viewCount') or {}
+            view_count = wc_data.get('short') or ""
             
             return Track(
-                id=video_id,
-                channel_name=channel_name,
-                duration=duration,
-                duration_sec=utils.to_seconds(duration),
+                id=str(video_id) if video_id else "",
+                channel_name=str(channel_name),
+                duration=str(duration),
+                duration_sec=utils.to_seconds(str(duration)),
                 message_id=m_id,
-                title=title[:50], # Limit title length
+                title=str(title)[:50],
                 thumbnail=thumbnail,
                 url=f"https://www.youtube.com/watch?v={video_id}",
-                view_count=data.get('viewCount', {}).get('short', ''),
+                view_count=str(view_count),
                 video=video,
             )
         except Exception as e:
-            logger.error(f"py-yt-search failed: {e}")
+            logger.error(f"py-yt-search failed: {e}", exc_info=True)
+            
+            # Fallback to yt-dlp search if py-yt-search fails (library bug)
+            logger.info(f"Falling back to yt-dlp search for: {query}")
+            try:
+                cookie = self.get_cookies()
+                ydl_opts = {
+                    "quiet": True,
+                    "no_warnings": True,
+                    "nocheckcertificate": True,
+                    "noplaylist": True, # We only want the first result
+                    "flat_playlist": True, # Don't extract full details yet/fast
+                }
+                if cookie: ydl_opts["cookiefile"] = cookie
+                if config.PROXY_URL: ydl_opts["proxy"] = config.PROXY_URL
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    # ytsearch1: returns 1 result
+                    info = await asyncio.to_thread(ydl.extract_info, f"ytsearch1:{query}", download=False)
+                    
+                    if info and 'entries' in info and info['entries']:
+                        entry = info['entries'][0]
+                        video_id = entry.get('id')
+                        return Track(
+                            id=video_id,
+                            channel_name=entry.get('uploader', 'Unknown'),
+                            duration=str(entry.get('duration', "0:00")),
+                            duration_sec=int(entry.get('duration', 0) or 0),
+                            message_id=m_id,
+                            title=entry.get('title', 'Unknown Title')[:50],
+                            thumbnail=None, # flat_playlist doesn't always give thumbs
+                            url=f"https://www.youtube.com/watch?v={video_id}",
+                            view_count=str(entry.get('view_count', '')),
+                            video=video,
+                        )
+            except Exception as ex:
+                logger.error(f"yt-dlp fallback search failed: {ex}")
         
         return None
 
