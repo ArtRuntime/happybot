@@ -23,6 +23,7 @@ class TgCall(PyTgCalls):
         self._client_map = {}
         self._consecutive_failures: dict[int, int] = defaultdict(int)
         self._play_next_locks: dict[int, asyncio.Lock] = {}
+        self._watchdog_tasks: dict[int, asyncio.Task] = {}  # Watchdog for stuck streams
 
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
@@ -50,6 +51,9 @@ class TgCall(PyTgCalls):
                 self._preload_tasks[chat_id].cancel()
             except:
                 pass
+        
+        # Cancel watchdog timer
+        self._cancel_watchdog(chat_id)
         
         # Cleanup current song and update UI
         media = await queue.get_current(chat_id)
@@ -119,6 +123,51 @@ class TgCall(PyTgCalls):
     # Track active preload tasks per chat
     _preload_tasks: dict[int, asyncio.Task] = {}
     _preload_cancelled: set[int] = set()
+
+    async def _start_watchdog(self, chat_id: int, duration_sec: int) -> None:
+        """Start a watchdog timer to auto-skip if stream gets stuck."""
+        # Cancel any existing watchdog for this chat
+        if chat_id in self._watchdog_tasks:
+            try:
+                self._watchdog_tasks[chat_id].cancel()
+            except:
+                pass
+        
+        async def watchdog():
+            try:
+                # Wait for song duration + 60 second buffer
+                buffer = 60
+                await asyncio.sleep(duration_sec + buffer)
+                
+                # Check if still playing the same song (stuck state)
+                media = await queue.get_current(chat_id)
+                if media and await db.get_call(chat_id):
+                    import time
+                    played_at = getattr(media, 'played_at', 0)
+                    elapsed = time.time() - played_at if played_at else 0
+                    
+                    # If elapsed time exceeds expected duration, stream is stuck
+                    if elapsed >= duration_sec:
+                        logger.warning(f"⚠️ Watchdog triggered for chat {chat_id} - stream stuck after {elapsed:.0f}s")
+                        await self.play_next(chat_id)
+            except asyncio.CancelledError:
+                pass  # Normal cancellation when song changes
+            except Exception as e:
+                logger.error(f"Watchdog error for {chat_id}: {e}")
+            finally:
+                if chat_id in self._watchdog_tasks:
+                    del self._watchdog_tasks[chat_id]
+        
+        self._watchdog_tasks[chat_id] = asyncio.create_task(watchdog())
+
+    def _cancel_watchdog(self, chat_id: int) -> None:
+        """Cancel watchdog timer for a chat."""
+        if chat_id in self._watchdog_tasks:
+            try:
+                self._watchdog_tasks[chat_id].cancel()
+                del self._watchdog_tasks[chat_id]
+            except:
+                pass
 
     async def _preload_next_song(self, chat_id: int, current_track: Track) -> None:
         """Proactively predict and download the next song in background."""
@@ -339,6 +388,11 @@ class TgCall(PyTgCalls):
                 await db.add_call(chat_id)
                 self._consecutive_failures[chat_id] = 0
                 
+                # Start watchdog to auto-skip if stream gets stuck
+                duration_sec = getattr(media, 'duration_sec', 0) or utils.to_seconds(media.duration)
+                if duration_sec > 0:
+                    await self._start_watchdog(chat_id, duration_sec)
+                
                 # Track this song for building recommendation dataset
                 try:
                     from datetime import datetime
@@ -532,6 +586,8 @@ class TgCall(PyTgCalls):
                 # If yes, prioritize user song and discard/ignore the autoplay result
                 if await queue.get_queue(chat_id):
                     logger.info(f"User added song during autoplay fetch in {chat_id} - Switching to user track")
+                    # Clear cancelled flag so new download can proceed
+                    yt.clear_cancelled(chat_id)
                     media = await queue.get_next(chat_id)
                 elif new_track:
                     # Add to queue

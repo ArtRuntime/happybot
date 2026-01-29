@@ -66,6 +66,10 @@ class YouTube:
         _cancelled_downloads.add(chat_id)
         logger.info(f"Marked downloads cancelled for chat {chat_id}")
 
+    def clear_cancelled(self, chat_id: int):
+        """Clear cancelled flag to allow new downloads (after user adds new song)."""
+        _cancelled_downloads.discard(chat_id)
+        logger.debug(f"Cleared cancelled flag for chat {chat_id}")
     def get_cookies(self):
         # Create cookie directory if it doesn't exist
         os.makedirs(self.cookie_dir, exist_ok=True)
@@ -225,7 +229,47 @@ class YouTube:
         except Exception as e:
             logger.error(f"py-yt-search failed: {e}", exc_info=True)
             
-            # Fallback to yt-dlp search if py-yt-search fails (library bug)
+            # Fallback 1: YouTube Music (ytmusicapi)
+            logger.info(f"Falling back to ytmusicapi for: {query}")
+            try:
+                if self.ytmusic:
+                    results = await asyncio.to_thread(
+                        self.ytmusic.search, query, filter="songs", limit=1
+                    )
+                    
+                    if results and len(results) > 0:
+                        data = results[0]
+                        video_id = data.get('videoId')
+                        
+                        if video_id:
+                            # Extract artist name
+                            artists = data.get('artists', [])
+                            channel_name = artists[0].get('name', 'Unknown') if artists else 'Unknown'
+                            
+                            # Get duration
+                            duration = data.get('duration', '0:00') or '0:00'
+                            
+                            # Get thumbnail
+                            thumbnails = data.get('thumbnails', [])
+                            thumbnail = thumbnails[-1].get('url') if thumbnails else None
+                            
+                            logger.info(f"✅ ytmusicapi fallback success: {data.get('title')}")
+                            return Track(
+                                id=video_id,
+                                channel_name=str(channel_name),
+                                duration=str(duration),
+                                duration_sec=utils.to_seconds(str(duration)),
+                                message_id=m_id,
+                                title=str(data.get('title', 'Unknown'))[:50],
+                                thumbnail=thumbnail,
+                                url=f"https://www.youtube.com/watch?v={video_id}",
+                                view_count='',
+                                video=video,
+                            )
+            except Exception as ytm_err:
+                logger.warning(f"ytmusicapi fallback failed: {ytm_err}")
+            
+            # Fallback 2: yt-dlp search
             logger.info(f"Falling back to yt-dlp search for: {query}")
             try:
                 cookie = self.get_cookies()
