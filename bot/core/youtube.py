@@ -34,6 +34,8 @@ _cancelled_downloads: set[int] = set()
 
 
 class YouTube:
+    StorageLowError = StorageLowError # Expose exception class 
+
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
         self.cookies = []
@@ -610,15 +612,19 @@ class YouTube:
     async def download(self, video_id: str, video: bool = False) -> str | None:
         if video_id.startswith("http"):
             url = video_id
-            safe_id = video_id.split("/")[-1].split("?")[0]
-            if len(safe_id) > 20: safe_id = safe_id[:20]
+            # Use MD5 hash of URL for safer and unique filenames
+            import hashlib
+            safe_id = hashlib.md5(url.encode()).hexdigest()
             file_name_base = safe_id
         else:
             url = self.base + video_id
             file_name_base = video_id
+            
+        os.makedirs("downloads", exist_ok=True)
+
 
         # Check for existing file with any common extension
-        import os
+
         for ext in [".mp4", ".mkv", ".webm", ".m4a", ".mp3"]:
              path = f"downloads/{file_name_base}{ext}"
              if Path(path).exists():
