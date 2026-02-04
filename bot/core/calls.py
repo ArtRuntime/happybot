@@ -335,6 +335,8 @@ class TgCall(PyTgCalls):
         message: Message,
         media: Media | Track,
         seek_time: int = 0,
+        audio_stream_index: int = 0,
+        video_stream_index: int = 0,
     ) -> None:
         client = await db.get_assistant(chat_id)
         _lang = await lang.get_lang(chat_id)
@@ -352,11 +354,19 @@ class TgCall(PyTgCalls):
         # Build ffmpeg parameters
         ffmpeg_params = f"-ss {seek_time}" if seek_time > 1 else None
         
-        # Add robust networking flags for all HTTP streams to prevent video dropouts
         if media.file_path.startswith("http"):
              # reconnect flags + increased analyze duration for better probing
              net_flags = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -analyzeduration 15000000 -probesize 100000000"
              ffmpeg_params = f"{net_flags} {ffmpeg_params}" if ffmpeg_params else net_flags
+        
+        # Audio Stream Selection
+        # If specific audio index requested (and not default 0)
+        if audio_stream_index > 0:
+             # -map 0:a:<index> selects the Nth audio stream
+             # We also map video 0:v:0 to ensure we keep video
+             map_flags = f"-map 0:v:{video_stream_index} -map 0:a:{audio_stream_index}"
+             ffmpeg_params = f"{ffmpeg_params} {map_flags}" if ffmpeg_params else map_flags
+             logger.info(f"Using custom stream map: {map_flags}")
         
         stream = types.MediaStream(
             media_path=media.file_path,
@@ -419,6 +429,20 @@ class TgCall(PyTgCalls):
                 )
                 autoplay_status = await db.get_autoplay(chat_id)
                 
+                # Detect audio streams for track selector
+                audio_track_count = 0
+                try:
+                    from bot.helpers._stream_info import get_audio_streams
+                    if media.file_path and not media.file_path.startswith("http"):
+                        audio_streams = await get_audio_streams(media.file_path)
+                        audio_track_count = len(audio_streams)
+                        # Store for later use in callbacks
+                        if audio_track_count > 1:
+                            media.audio_streams = audio_streams
+                            await queue.update_current(chat_id, media)
+                except Exception as e:
+                    logger.debug(f"Failed to detect audio streams: {e}")
+                
                 # Generate progress bar
                 try:
                     duration_sec = utils.to_seconds(media.duration)
@@ -426,7 +450,7 @@ class TgCall(PyTgCalls):
                 except Exception as e:
                     timer = None
                 
-                keyboard = buttons.controls(chat_id, timer=timer, autoplay=autoplay_status)
+                keyboard = buttons.controls(chat_id, timer=timer, autoplay=autoplay_status, audio_tracks=audio_track_count)
                 try:
                     await message.edit_media(
                         media=InputMediaPhoto(
@@ -491,10 +515,64 @@ class TgCall(PyTgCalls):
             await message.edit_text(_lang["error_rtmp"])
 
 
+    async def change_stream(self, chat_id: int, audio_index: int) -> bool:
+        """
+        Change the active audio stream (language) for the current playback.
+        Restarting the stream at the current position.
+        """
+        if not await db.get_call(chat_id):
+            return False
+            
+        media = await queue.get_current(chat_id)
+        if not media:
+            return False
+            
+        # Get current position
+        # We can't get exact position from py-tgcalls easily, so we estimate
+        import time
+        played_at = getattr(media, 'played_at', 0)
+        current_position = int(time.time() - played_at) if played_at else 0
+        
+        # Prevent restart from beginning if position is glitchy
+        if current_position < 0: current_position = 0
+            
+        # Re-play with new index
+        try:
+            # Need to find the original message to edit
+            # If we don't have it, we can't easily edit, but we can still play.
+            # However, play_media expects a message.
+            # We will use the stored message_id to fetch it if possible, 
+            # otherwise we might fail UI updates but stream will work.
+            message = None
+            if media.message_id:
+                try:
+                    msgs = await app.get_messages(chat_id, [media.message_id])
+                    if msgs: message = msgs[0]
+                except:
+                    pass
+            
+            if not message:
+                # Create a temporary status message if original lost
+                message = await app.send_message(chat_id, "🔄 Switching audio track...")
+            
+            logger.info(f"Switching audio stream to index {audio_index} at {current_position}s")
+            await self.play_media(
+                chat_id, 
+                message, 
+                media, 
+                seek_time=current_position, 
+                audio_stream_index=audio_index
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to change stream: {e}")
+            return False
+
+
     async def replay(self, chat_id: int) -> None:
         if not await db.get_call(chat_id):
             return
-
+            
         media = await queue.get_current(chat_id)
         _lang = await lang.get_lang(chat_id)
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])

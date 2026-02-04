@@ -659,6 +659,7 @@ class YouTube:
             ydl_opts = {
                 **base_opts,
                 "format": "bestaudio/best",
+                "audio_multistreams": True, # Keep all audio tracks
             }
 
         def _download():

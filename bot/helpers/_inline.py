@@ -16,7 +16,7 @@ class Inline:
         return types.InlineKeyboardMarkup(rows)
 
     def controls(
-        self, chat_id: int, status: str = None, timer: str = None, autoplay: bool = False, remove: bool = False
+        self, chat_id: int, status: str = None, timer: str = None, autoplay: bool = False, remove: bool = False, audio_tracks: int = 0
     ) -> types.InlineKeyboardMarkup:
         buttons = []
 
@@ -40,9 +40,13 @@ class Inline:
         
         # Autoplay toggle row
         autoplay_icon = "✅" if autoplay else "❌"
-        buttons.append([
-            self.ikb(text=f"Autoplay {autoplay_icon}", callback_data=f"controls autoplay {chat_id}")
-        ])
+        autoplay_row = [self.ikb(text=f"Autoplay {autoplay_icon}", callback_data=f"controls autoplay {chat_id}")]
+        
+        # Add audio track selector if multiple tracks available
+        if audio_tracks > 1:
+            autoplay_row.append(self.ikb(text=f"🎵 Audio ({audio_tracks})", callback_data=f"audio_menu {chat_id}"))
+        
+        buttons.append(autoplay_row)
 
         return self.ikm(buttons)
 
@@ -235,3 +239,35 @@ class Inline:
         buttons.append([self.ikb(text="❌ Close", callback_data="autoplay_close")])
         
         return self.ikm(buttons)
+
+    def audio_track_menu(self, chat_id: int, tracks: list[dict], current_index: int = 0) -> types.InlineKeyboardMarkup:
+        """Menu to select audio track from available streams"""
+        buttons = []
+        
+        # Title row
+        buttons.append([self.ikb(text="🎵 Select Audio Track", callback_data="audio_menu_info")])
+        
+        # Track selection buttons (2 per row)
+        track_buttons = []
+        for track in tracks:
+            idx = track["index"]
+            lang = track.get("language", "unknown")
+            title = track.get("title", f"Track {idx + 1}")
+            
+            # Show checkmark for current track
+            check = "✅" if idx == current_index else "⚪"
+            label = f"{check} {title} ({lang})"
+            
+            track_buttons.append(
+                self.ikb(text=label, callback_data=f"audio_select {chat_id} {idx}")
+            )
+        
+        # Arrange in rows of 2
+        for i in range(0, len(track_buttons), 2):
+            buttons.append(track_buttons[i:i+2])
+        
+        # Close button
+        buttons.append([self.ikb(text="❌ Close", callback_data="audio_menu_close")])
+        
+        return self.ikm(buttons)
+
