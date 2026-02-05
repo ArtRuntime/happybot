@@ -181,9 +181,12 @@ async def play_hndlr(
             return
 
     if not file.file_path:
-        fname = f"downloads/{file.id}.{'mp4' if video else 'webm'}"
-        if Path(fname).exists():
-            file.file_path = fname
+        # Check for any existing file with this ID regardless of extension
+        search_path = Path(f"downloads/{file.id}.*")
+        found_files = list(Path("downloads").glob(f"{file.id}.*"))
+        
+        if found_files:
+            file.file_path = str(found_files[0])
         else:
             # Use direct streaming or download based on config
             if config.ENABLE_DIRECT_STREAMING and file.req_type != "telegram" and not file.url.startswith("t.me") and not video:
