@@ -473,6 +473,10 @@ class TgCall(PyTgCalls):
                         reply_markup=keyboard,
                     )).id
                 
+                # IMPORTANT: Save the new/updated message_id to the queue/DB
+                # This ensures future control interactions target the correct message
+                await queue.update_current(chat_id, media)
+                
                 
                 # Proactive autoplay preload - predict and download next song in background
                 if autoplay_status and not await queue.get_next(chat_id, check=True):
