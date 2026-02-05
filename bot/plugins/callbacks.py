@@ -112,7 +112,8 @@ async def _controls(_, query: types.CallbackQuery):
             if not media.file_path:
                 # Use streaming if enabled
                 if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
-                    media.file_path = await yt.get_stream_url(media.id, video=media.video)
+                    quality = await db.get_quality(chat_id)
+                    media.file_path = await yt.get_stream_url(media.id, video=media.video, quality=quality)
                     if not media.file_path:
                         media.file_path = await yt.download(media.id, video=media.video)
                 else:
@@ -165,8 +166,12 @@ async def _controls(_, query: types.CallbackQuery):
                 audio_streams = getattr(media, 'audio_streams', [])
                 audio_track_count = len(audio_streams) if audio_streams else 0
             
+            
             keyboard = buttons.controls(
-                chat_id, status=status if action == "pause" else None, autoplay=autoplay_status, audio_tracks=audio_track_count
+                chat_id, 
+                status=status if action == "pause" else None, 
+                autoplay=autoplay_status, 
+                audio_tracks=audio_track_count
             )
             await query.edit_message_caption(
                 caption=new_caption, reply_markup=keyboard

@@ -2,20 +2,56 @@ start - Start the bot
 help - Show the help menu
 play - Play audio from a link or search query
 vplay - Play video from a link or search query
+playforce - Force play audio (skip queue)
+vplayforce - Force play video (skip queue)
 stop - Stop playback and clear queue
+end - Stop playback and clear queue
 loop - Loop the current track
 pause - Pause the current playback
 resume - Resume paused playback
 skip - Skip to the next track
+next - Skip to the next track
 queue - Show the list of queued tracks
-seek - Seek forward
-seekback - Seek backward
+playing - Show the list of queued tracks
+seek - Seek forward or backward in track
+seekback - Seek backward in track
 autoplay - Toggle smart autoplay mode
-addsession - Add a new assistant session (sudo only)
-rmsession - Remove an assistant session (sudo only)
-sessions - List all active assistants (sudo only)
+quality - Set audio quality (low/medium/high/studio)
+audio - Select audio track for multi-audio files
+clean - Clean up bot messages in chat
+cleanup - Clean up bot messages in chat
+auth - Authorize user to use bot commands
+unauth - Unauthorize user from using bot commands
+admincache - Reload admin cache
+reload - Reload admin cache
+alive - Check bot latency and status
 ping - Check bot latency and status
 stats - Show bot statistics
-forceplay - Force play a track
-forcevplay - Force play a video
-addfallback - Add a fallback Cookie file
+ac - Show active voice chats (sudo only)
+activevc - Show active voice chats (sudo only)
+broadcast - Broadcast message to all chats (sudo only)
+gcast - Broadcast message to all chats (sudo only)
+brodcast - Broadcast message to all chats (sudo only)
+stop_gcast - Stop ongoing broadcast (sudo only)
+stop_broadcast - Stop ongoing broadcast (sudo only)
+blacklist - Blacklist a user (sudo only)
+unblacklist - Remove user from blacklist (sudo only)
+whitelist - Remove user from blacklist (sudo only)
+addsudo - Add a sudo user (owner only)
+delsudo - Remove a sudo user (sudo only)
+rmsudo - Remove a sudo user (sudo only)
+listsudo - List all sudo users
+sudolist - List all sudo users
+addsession - Add a new assistant session (sudo only)
+rmsession - Remove an assistant session (sudo only)
+removesession - Remove an assistant session (sudo only)
+sessions - List all active assistants (sudo only)
+listsessions - List all active assistants (sudo only)
+logs - Get bot logs (sudo only)
+logger - Toggle logger mode (sudo only)
+restart - Restart the bot (sudo only)
+addfallback - Add a fallback Cookie file (sudo only)
+login - Login assistant account (private only)
+stoplogin - Stop login process (private only)
+eval - Execute Python code (owner only)
+exec - Execute Python code (owner only)

@@ -785,7 +785,7 @@ class YouTube:
         except:
             return False
 
-    async def get_stream_url(self, video_id: str, video: bool = False) -> str | None:
+    async def get_stream_url(self, video_id: str, video: bool = False, quality: str = None) -> str | None:
         """
         Get direct stream URL without downloading (for instant playback).
         
@@ -837,15 +837,11 @@ class YouTube:
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
-            "noplaylist": True,
-            "geo_bypass": True,
             "nocheckcertificate": True,
-            "cookiefile": cookie,
-            "sleep_interval": 3,
-            "max_sleep_interval": 10,
+            "geo_bypass": True,
         }
-        
-        # Use proxy if configured
+        if cookie:
+            ydl_opts["cookiefile"] = cookie
         if config.PROXY_URL:
             ydl_opts["proxy"] = config.PROXY_URL
         
@@ -855,11 +851,13 @@ class YouTube:
             ydl_opts["format"] = "best"
         else:
             # For audio: get best audio
-            # Prefer m4a/opus, fallback to any audio
-            quality = getattr(config, 'STREAM_QUALITY', 'medium')
+            # Prefer m4a/opus, fallback to any audio for default from now as fallback
+            if not quality:
+                quality = getattr(config, 'STREAM_QUALITY', 'medium')
+            
             if quality == 'low':
                 ydl_opts["format"] = "worstaudio/worst"
-            elif quality == 'high':
+            elif quality == 'high' or quality == 'studio':
                 ydl_opts["format"] = "bestaudio/best"
             else:  # medium (default)
                 ydl_opts["format"] = "bestaudio[abr<=192]/bestaudio/best"

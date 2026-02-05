@@ -73,3 +73,33 @@ async def change_audio_stream(client, message, **kwargs):
     except Exception as e:
         logger.error(f"Error in /audio command: {e}")
         await message.reply_text("❌ An error occurred.")
+
+
+@app.on_message(filters.command("quality") & filters.group)
+@admin_check
+async def change_quality(client, message, **kwargs):
+    chat_id = message.chat.id
+    
+    # Usage: /quality [low|medium|high|studio]
+    if len(message.command) < 2:
+        current = await db.get_quality(chat_id)
+        return await message.reply_text(
+            f"ℹ️ **Audio Quality Settings**\n\n"
+            f"Current: **{current.title()}**\n\n"
+            "Usage: `/quality [option]`\n\n"
+            "**Options:**\n"
+            "• `low` (32kbps) - Save Data\n"
+            "• `medium` (64kbps) - Default\n"
+            "• `high` (128kbps) - Better\n"
+            "• `studio` (192kbps) - Best\n\n"
+            "Changes apply to the **next** song played."
+        )
+        
+    choice = message.command[1].lower()
+    valid_options = ["low", "medium", "high", "studio"]
+    
+    if choice not in valid_options:
+         return await message.reply_text("❌ Invalid option. Use: low, medium, high, studio")
+         
+    await db.set_quality(chat_id, choice)
+    await message.reply_text(f"✅ **Audio Quality set to: {choice.title()}**\n\nNew quality will be used from the next song.")

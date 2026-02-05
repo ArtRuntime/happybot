@@ -309,6 +309,19 @@ class MongoDB:
             self.autoplay[chat_id] = doc["status"] if doc else False
         return self.autoplay[chat_id]
 
+    # QUALITY METHODS
+    async def set_quality(self, chat_id: int, quality: str):
+        await self.db.quality.update_one(
+            {"_id": chat_id},
+            {"$set": {"quality": quality}},
+            upsert=True,
+        )
+
+    async def get_quality(self, chat_id: int) -> str:
+        doc = await self.db.quality.find_one({"_id": chat_id})
+        return doc["quality"] if doc else "medium"
+
+
     # LOGGER METHODS
     async def is_logger(self) -> bool:
         return self.logger

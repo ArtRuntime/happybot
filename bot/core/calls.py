@@ -216,7 +216,8 @@ class TgCall(PyTgCalls):
             from bot import config
             if config.ENABLE_DIRECT_STREAMING and not next_track.url.startswith("t.me") and not next_track.video:
                 # Direct streaming for YouTube/external URLs (Audio Only)
-                next_track.file_path = await yt.get_stream_url(next_track.id, video=next_track.video)
+                quality = await db.get_quality(chat_id)
+                next_track.file_path = await yt.get_stream_url(next_track.id, video=next_track.video, quality=quality)
                 if not next_track.file_path:
                     logger.warning(f"Stream URL extraction failed, falling back to download")
                     next_track.file_path = await yt.download(next_track.id, video=next_track.video)
@@ -314,7 +315,8 @@ class TgCall(PyTgCalls):
         try:
             # 1. Try Direct Streaming (if enabled) - Audio Only
             if config.ENABLE_DIRECT_STREAMING and track.req_type != "telegram" and not track.url.startswith("t.me") and not track.video:
-                track.file_path = await yt.get_stream_url(track.id, video=track.video)
+                quality = await db.get_quality(chat_id)
+                track.file_path = await yt.get_stream_url(track.id, video=track.video, quality=quality)
                 if track.file_path:
                     logger.info(f"✅ Track prepared (Stream): {track.title}")
                     return
@@ -368,9 +370,23 @@ class TgCall(PyTgCalls):
              ffmpeg_params = f"{ffmpeg_params} {map_flags}" if ffmpeg_params else map_flags
              logger.info(f"Using custom stream map: {map_flags}")
         
+        # Audio Quality Selection
+        quality_setting = await db.get_quality(chat_id)
+        if quality_setting == "low":
+            audio_quality = types.AudioQuality.LOW
+        elif quality_setting == "high":
+            audio_quality = types.AudioQuality.HIGH
+        elif quality_setting == "studio":
+            audio_quality = types.AudioQuality.STUDIO
+        else: # Medium/Default
+            audio_quality = types.AudioQuality.MEDIUM
+
+        logger.info(f"Using Audio Quality: {quality_setting.upper()}")
+
+
         stream = types.MediaStream(
             media_path=media.file_path,
-            audio_parameters=types.AudioQuality.HIGH,
+            audio_parameters=audio_quality,
             video_parameters=types.VideoQuality.HD_720p,
             audio_flags=types.MediaStream.Flags.REQUIRED,
             video_flags=(
@@ -465,7 +481,9 @@ class TgCall(PyTgCalls):
                     )
                     # Update message_id to track the edited message
                     media.message_id = message.id
-                except MessageIdInvalid:
+                except Exception as e:
+                    # If edit fails (wrong message type, deleted message, etc), send new photo
+                    logger.debug(f"Failed to edit media, sending new photo: {e}")
                     media.message_id = (await app.send_photo(
                         chat_id=chat_id,
                         photo=_thumb,
@@ -496,23 +514,47 @@ class TgCall(PyTgCalls):
             await self.stop(chat_id)
             await message.edit_text(_lang["error_no_call"])
         except exceptions.NoAudioSourceFound:
-            # Fallback to download if streaming failed
-            if media.file_path and media.file_path.startswith("http"):
+            logger.warning(f"NoAudioSourceFound for {media.title} ({media.file_path})")
+            
+            # 1. Clean up corrupted file if local
+            if media.file_path and not media.file_path.startswith("http") and os.path.exists(media.file_path):
                 try:
-                    await message.edit_text("📥 Stream failed, downloading...")
-                    logger.warning(f"Stream failed for {media.title}, falling back to download")
-                    
-                    new_path = await yt.download(media.id, video=media.video)
-                    
-                    if new_path:
-                        media.file_path = new_path
-                        # Recursive retry with downloaded file
-                        return await self.play_media(chat_id, message, media, seek_time)
+                    os.remove(media.file_path)
+                    logger.info(f"Deleted corrupted file: {media.file_path}")
                 except Exception as e:
-                    logger.error(f"Fallback download failed: {e}")
-                    
-            # Increment failure counter to prevent infinite loops
+                    logger.error(f"Failed to delete corrupted file: {e}")
+
+            # 2. Check retry limit (prevent infinite loops)
+            if self._consecutive_failures[chat_id] > 2:
+                self._consecutive_failures[chat_id] = 0
+                await message.edit_text(_lang["error_no_audio"])
+                return await self.play_next(chat_id)
+            
+            # 3. Retry Logic
             self._consecutive_failures[chat_id] += 1
+            await message.edit_text("🔄 File corrupted, re-fetching...")
+            
+            try:
+                # Re-fetch media (Stream OR Download)
+                # We reuse the logic from play_next/prepare roughly
+                from bot import config
+                
+                # Try direct stream if applicable
+                if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me") and not media.video:
+                     quality = await db.get_quality(chat_id)
+                     media.file_path = await yt.get_stream_url(media.id, video=media.video, quality=quality)
+                     if not media.file_path:
+                         media.file_path = await yt.download(media.id, video=media.video)
+                else:
+                     # Fallback to download
+                     media.file_path = await yt.download(media.id, video=media.video)
+                
+                if media.file_path:
+                     # Recursive retry
+                     return await self.play_media(chat_id, message, media, seek_time)
+            except Exception as e:
+                logger.error(f"Retry re-fetch failed: {e}")
+
             await message.edit_text(_lang["error_no_audio"])
             await self.play_next(chat_id)
         except (ConnectionNotFound, TelegramServerError):
@@ -583,8 +625,18 @@ class TgCall(PyTgCalls):
             
         media = await queue.get_current(chat_id)
         _lang = await lang.get_lang(chat_id)
+        
+        # Delete the old player message if it exists
+        if hasattr(media, 'message_id') and media.message_id:
+            try:
+                await app.delete_messages(chat_id=chat_id, message_ids=media.message_id)
+            except:
+                pass
+        
+        # Send a fresh status message
         msg = await app.send_message(chat_id=chat_id, text=_lang["play_again"])
         await self.play_media(chat_id, msg, media)
+
 
 
 
@@ -720,7 +772,8 @@ class TgCall(PyTgCalls):
             if config.ENABLE_DIRECT_STREAMING and not media.url.startswith("t.me") and not media.video:
                 # Direct streaming for YouTube/external URLs
                 logger.info(f"🎵 Using direct streaming for: {media.title}")
-                media.file_path = await yt.get_stream_url(media.id, video=media.video)
+                quality = await db.get_quality(chat_id)
+                media.file_path = await yt.get_stream_url(media.id, video=media.video, quality=quality)
                 if not media.file_path:
                     logger.warning(f"Stream URL extraction failed, falling back to download")
                     media.file_path = await yt.download(media.id, video=media.video)

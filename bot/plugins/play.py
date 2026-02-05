@@ -193,7 +193,8 @@ async def play_hndlr(
                 # Direct streaming for YouTube/external URLs
                 await sent.edit_text("🔎 Loading Stream...")
                 try:
-                    file.file_path = await yt.get_stream_url(file.id, video=video)
+                    quality = await db.get_quality(chat_id)
+                    file.file_path = await yt.get_stream_url(file.id, video=video, quality=quality)
                     if not file.file_path:
                         # Fallback to download if streaming fails
                         file.file_path = await yt.download(file.id, video=video)

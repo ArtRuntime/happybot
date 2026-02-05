@@ -16,7 +16,7 @@ class Inline:
         return types.InlineKeyboardMarkup(rows)
 
     def controls(
-        self, chat_id: int, status: str = None, timer: str = None, autoplay: bool = False, remove: bool = False, audio_tracks: int = 0
+        self, chat_id: int, status: str = None, timer: str = None, autoplay: bool = False, remove: bool = False, audio_tracks: int = 0, **kwargs
     ) -> types.InlineKeyboardMarkup:
         buttons = []
 
@@ -51,6 +51,7 @@ class Inline:
         return self.ikm(buttons)
 
     def start_key(self, lang: dict, private: bool) -> types.InlineKeyboardMarkup:
+        # ... existing start_key ... (truncated for brevity in search replacement)
         if private:
             return self.ikm(
                 [
