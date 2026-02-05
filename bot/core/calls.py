@@ -740,6 +740,16 @@ class TgCall(PyTgCalls):
 
         media.message_id = msg.id
         await queue.update_current(chat_id, media)
+        
+        # Prevent Zombie State: Force leave before playing new track
+        # This ensures a fresh connection for every song, resolving "silent playback" issues
+        if config.ENABLE_DIRECT_STREAMING: # Only needed for streaming/long sessions
+            try:
+                client = await db.get_assistant(chat_id)
+                await client.leave_call(chat_id)
+            except:
+                pass
+                
         await self.play_media(chat_id, msg, media)
 
 

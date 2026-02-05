@@ -16,5 +16,13 @@ async def _skip(_, m: types.Message):
     if not await db.get_call(m.chat.id):
         return await m.reply_text(m.lang["not_playing"])
 
+    # Fix for "Zombie State" (bot thinks it's playing but VC is silent)
+    # Force leave the call before playing next track to ensure fresh connection
+    try:
+        client = await db.get_assistant(m.chat.id)
+        await client.leave_call(m.chat.id)
+    except:
+        pass
+
     await anon.play_next(m.chat.id)
     await m.reply_text(m.lang["play_skipped"].format(m.from_user.mention))
