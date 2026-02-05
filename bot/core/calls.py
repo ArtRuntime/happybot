@@ -433,15 +433,19 @@ class TgCall(PyTgCalls):
                 audio_track_count = 0
                 try:
                     from bot.helpers._stream_info import get_audio_streams
+                    logger.info(f"Checking audio streams for: {media.file_path}")
                     if media.file_path and not media.file_path.startswith("http"):
                         audio_streams = await get_audio_streams(media.file_path)
                         audio_track_count = len(audio_streams)
+                        logger.info(f"Detected {audio_track_count} audio stream(s): {audio_streams}")
                         # Store for later use in callbacks
                         if audio_track_count > 1:
                             media.audio_streams = audio_streams
                             await queue.update_current(chat_id, media)
+                    else:
+                        logger.info(f"Skipping audio detection - HTTP stream or no file_path")
                 except Exception as e:
-                    logger.debug(f"Failed to detect audio streams: {e}")
+                    logger.error(f"Failed to detect audio streams: {e}", exc_info=True)
                 
                 # Generate progress bar
                 try:

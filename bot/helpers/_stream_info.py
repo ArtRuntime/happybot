@@ -15,6 +15,7 @@ async def get_audio_streams(file_path: str) -> list[dict]:
         List of dicts with 'index', 'language', 'title' for each audio stream
     """
     if not file_path or not os.path.exists(file_path):
+        logger.warning(f"File path invalid or doesn't exist: {file_path}")
         return []
     
     try:
@@ -27,6 +28,7 @@ async def get_audio_streams(file_path: str) -> list[dict]:
             file_path
         ]
         
+        logger.info(f"Running ffprobe on: {file_path}")
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -36,11 +38,13 @@ async def get_audio_streams(file_path: str) -> list[dict]:
         stdout, stderr = await proc.communicate()
         
         if proc.returncode != 0:
-            logger.error(f"ffprobe failed: {stderr.decode()}")
+            logger.error(f"ffprobe failed with code {proc.returncode}: {stderr.decode()}")
             return []
         
         data = json.loads(stdout.decode())
         streams = data.get("streams", [])
+        
+        logger.info(f"ffprobe found {len(streams)} audio stream(s)")
         
         audio_tracks = []
         for idx, stream in enumerate(streams):
@@ -54,9 +58,10 @@ async def get_audio_streams(file_path: str) -> list[dict]:
                 "title": title,
                 "codec": stream.get("codec_name", "unknown")
             })
+            logger.info(f"  Track {idx}: {title} ({language}) - {stream.get('codec_name')}")
         
         return audio_tracks
         
     except Exception as e:
-        logger.error(f"Error detecting audio streams: {e}")
+        logger.error(f"Error detecting audio streams: {e}", exc_info=True)
         return []

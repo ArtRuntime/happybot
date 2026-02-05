@@ -652,7 +652,10 @@ class YouTube:
         if video:
             ydl_opts = {
                 **base_opts,
-                "format": "bestvideo+bestaudio/best",
+                # bestvideo + ALL audio streams (bestaudio*)
+                # This ensures multiple audio tracks are kept in the output
+                "format": "bestvideo+bestaudio*",
+                "audio_multistreams": True,  # Keep all audio tracks
                 # Remove merge_output_format to allow best native container (mkv/webm/mp4)
             }
         else:

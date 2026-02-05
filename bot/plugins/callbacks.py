@@ -159,8 +159,14 @@ async def _controls(_, query: types.CallbackQuery):
                 )
                 new_caption = f"{mtext}\n\n<blockquote>{reply}</blockquote>"
             
+            # Get audio track count from current media
+            audio_track_count = 0
+            if media:
+                audio_streams = getattr(media, 'audio_streams', [])
+                audio_track_count = len(audio_streams) if audio_streams else 0
+            
             keyboard = buttons.controls(
-                chat_id, status=status if action == "pause" else None, autoplay=autoplay_status
+                chat_id, status=status if action == "pause" else None, autoplay=autoplay_status, audio_tracks=audio_track_count
             )
             await query.edit_message_caption(
                 caption=new_caption, reply_markup=keyboard

@@ -52,8 +52,13 @@ async def _autoplay_close(_, query: types.CallbackQuery):
                 timer = None
         except:
             timer = None
+        
+        # Get audio track count from current media
+        audio_track_count = 0
+        audio_streams = getattr(current, 'audio_streams', [])
+        audio_track_count = len(audio_streams) if audio_streams else 0
             
-        keyboard = buttons.controls(chat_id, timer=timer, autoplay=autoplay_status)
+        keyboard = buttons.controls(chat_id, timer=timer, autoplay=autoplay_status, audio_tracks=audio_track_count)
         await query.edit_message_reply_markup(reply_markup=keyboard)
     else:
         # If nothing playing, show stopped state instead of deleting
