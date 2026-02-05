@@ -384,11 +384,16 @@ class TgCall(PyTgCalls):
         logger.info(f"Using Audio Quality: {quality_setting.upper()}")
 
 
+
         stream = types.MediaStream(
             media_path=media.file_path,
             audio_parameters=audio_quality,
             video_parameters=types.VideoQuality.HD_720p,
-            audio_flags=types.MediaStream.Flags.REQUIRED,
+            audio_flags=(
+                types.MediaStream.Flags.AUTO_DETECT
+                if media.video
+                else types.MediaStream.Flags.REQUIRED
+            ),
             video_flags=(
                 types.MediaStream.Flags.AUTO_DETECT
                 if media.video

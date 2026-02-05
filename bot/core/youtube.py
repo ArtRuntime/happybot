@@ -652,11 +652,11 @@ class YouTube:
         if video:
             ydl_opts = {
                 **base_opts,
-                # bestvideo + ALL audio streams (bestaudio*)
-                # This ensures multiple audio tracks are kept in the output
-                "format": "bestvideo+bestaudio*",
+                # Ensure video + audio are both downloaded and merged
+                # Priority: best video+audio merge, then best pre-merged, then any best
+                "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best",
+                "merge_output_format": "mp4",  # Force merge to mp4 for compatibility
                 "audio_multistreams": True,  # Keep all audio tracks
-                # Remove merge_output_format to allow best native container (mkv/webm/mp4)
             }
         else:
             ydl_opts = {
