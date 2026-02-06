@@ -542,7 +542,6 @@ class TgCall(PyTgCalls):
             try:
                 # Re-fetch media (Stream OR Download)
                 # We reuse the logic from play_next/prepare roughly
-                from bot import config
                 
                 # Try direct stream if applicable
                 if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me") and not media.video:
