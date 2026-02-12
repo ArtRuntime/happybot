@@ -12,6 +12,14 @@ login_states = {}
 async def login_command(_, message: types.Message):
     user_id = message.from_user.id
     
+    # Restrict to sudo users only
+    if user_id not in app.sudoers:
+        await message.reply_text(
+            "🔒 **Access Denied**\n\n"
+            "This command is restricted to bot administrators only."
+        )
+        return
+    
     if user_id in login_states:
         await message.reply_text("❌ You are already in a login process. Use /stoplogin to stop.")
         return

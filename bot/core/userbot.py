@@ -40,19 +40,57 @@ class Userbot(Client):
         client = await self._create_client(session_string, name)
         await client.start()
         
-        try:
-            await client.send_message(config.LOGGER_ID, f"Assistant '{name}' Started")
-        except Exception as e:
-            logger.error(f"Assistant '{name}' failed to send message in log group: {e}")
-            # Don't stop, just log
-        
-        # Set client properties
+        # Set client properties first
         me = await client.get_me()
         client.id = me.id
         client.name = name  # Use our internal name
         client.user_name = me.first_name # Telegram name
         client.username = me.username
         client.mention = me.mention
+        
+        # Join and announce in logs group
+        if config.LOGGER_ID:
+            try:
+                # Try to join the logs group
+                await client.join_chat(config.LOGGER_ID)
+                logger.info(f"Assistant '{name}' joined logs group")
+            except Exception as e:
+                logger.debug(f"Assistant '{name}' already in logs group or couldn't join: {e}")
+            
+            try:
+                # Promote to admin so it can send messages
+                from bot import app
+                from pyrogram import types
+                await app.promote_chat_member(
+                    config.LOGGER_ID,
+                    client.id,
+                    privileges=types.ChatPrivileges(
+                        can_manage_chat=False,
+                        can_delete_messages=False,
+                        can_manage_video_chats=False,
+                        can_restrict_members=False,
+                        can_promote_members=False,
+                        can_change_info=False,
+                        can_invite_users=False,
+                        can_pin_messages=False,
+                        can_post_messages=True,  # Allow posting
+                    )
+                )
+                logger.info(f"Assistant '{name}' promoted in logs group")
+            except Exception as e:
+                logger.debug(f"Failed to promote assistant '{name}': {e}")
+            
+            try:
+                # Send startup message from the assistant itself
+                await client.send_message(
+                    config.LOGGER_ID,
+                    f"✅ **Assistant Started**\n\n"
+                    f"**Name:** {client.user_name}\n"
+                    f"**Username:** @{client.username or 'None'}\n"
+                    f"**Session:** `{name}`"
+                )
+            except Exception as e:
+                logger.error(f"Assistant '{name}' failed to send startup message: {e}")
         
         self.clients.append(client)
         self._client_map[name] = client
