@@ -32,8 +32,11 @@ _polling_locks = {}
 async def get_vc_participants(chat_id: int):
     """Fetch current VC participants using userbot."""
     try:
-        # Use simple client selection (first available)
-        ub = userbot.clients[0]
+        # Use the assistant assigned to this chat
+        ub = await db.get_client(chat_id)
+        if not ub:
+            # Fallback to first client if assignment fails
+            ub = userbot.clients[0]
         
         # Get chat info to find group call
         chat = await ub.get_chat(chat_id)
