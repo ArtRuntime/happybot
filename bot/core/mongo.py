@@ -392,6 +392,20 @@ class MongoDB:
             upsert=True,
         )
 
+    # VC LOGGER PER-CHAT METHODS
+    async def set_vc_logger_enabled(self, chat_id: int, enabled: bool):
+        """Set whether VC logger is enabled for a specific chat. True=enabled, False=disabled."""
+        await self.db.vc_logger.update_one(
+            {"_id": chat_id},
+            {"$set": {"enabled": enabled}},
+            upsert=True,
+        )
+
+    async def get_vc_logger_enabled(self, chat_id: int) -> bool:
+        """Get whether VC logger is enabled for a specific chat. Default: True"""
+        doc = await self.db.vc_logger.find_one({"_id": chat_id})
+        return doc["enabled"] if doc else True
+
     # PLAY MODE METHODS
     async def get_play_mode(self, chat_id: int) -> bool:
         if chat_id not in self.admin_play:
