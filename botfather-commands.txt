@@ -57,3 +57,64 @@ eval - Execute Python code (owner only)
 exec - Execute Python code (owner only)
 vclogger - Toggle voice chat join/leave logger
 autoleave - Toggle auto-leave for current chat (sudo only)
+
+# Federation
+newfed - Create a new federation
+delfed - Delete a federation
+renamefed - Rename a federation
+chatfed - Show federation info for current chat
+joinfed - Join a federation (chat owner only)
+leavefed - Leave a federation (chat owner only)
+fban - Ban a user globally in federation
+unfban - Unban a user globally in federation
+fedinfo - Show info about a federation
+fedadmins - Show federation admins
+fbanlist - Show banned users in federation
+fstat - Show federation statistics
+
+# Group Management
+lock - Lock a message type (e.g. sticker, link)
+unlock - Unlock a message type
+locks - Show locked message types
+filter - Add a filter/auto-reply
+stop - Stop a filter
+filters - List all filters
+autoapprove - Toggle auto-approve join requests
+blacklist_chat - Blacklist valid for chat
+addblacklist - Add word to blacklist
+rmblacklist - Remove word from blacklist
+
+# Utilities & Tools
+autoforward - Toggle auto-forwarding
+ocr - Extract text from image
+kang - Add sticker to pack
+unkang - Remove sticker from pack
+getsticker - Convert sticker to image
+stickerid - Get sticker ID
+webss - Take screenshot of a website
+genss - Take screenshot of a video
+subscene - Search and download subtitles
+run - Execute code (Glot.io)
+paste - Paste text to private bin
+urban - Search Urban Dictionary
+currency - Convert currency
+afk - Set Away-From-Keyboard status
+sangmata - Toggle user history tracking
+
+# Fun
+quotly - Create sticker quote from message
+q - Create sticker quote from message
+memify - Add text to sticker/image
+mmf - Add text to sticker/image
+tebakgambar - Guess the image game
+tebaklontong - Guess the riddle game
+tebakkata - Guess the word game
+tebaktebakan - Riddle game
+stopgame - Stop active game
+
+# Video Downloader
+ytdl - Download video/audio from any URL (yt-dlp supported)
+
+# Admin Commands
+ban - Ban a user from the chat
+unban - Unban a user from the chat

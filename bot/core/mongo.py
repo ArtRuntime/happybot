@@ -57,6 +57,13 @@ class MongoDB:
         # Stream URL Cache
         self.stream_cache = self.db.stream_cache
 
+        # SangMata Collections
+        self.sangmata_users = self.db.sangmata_users
+        self.sangmata_chats = self.db.sangmata_chats
+
+        # AFK Collection
+        self.afk = self.db.afk
+
     async def connect(self) -> None:
         """Check if we can connect to the database and create indexes."""
         try:
@@ -595,3 +602,242 @@ class MongoDB:
         Returns dict with 'url' and 'expire' or None.
         """
         return await self.stream_cache.find_one({"_id": video_id})
+
+
+    # FEDERATION METHODS
+    async def create_fed(self, fed_name, user_id, fed_id):
+        return await self.db.feds.insert_one(
+            {
+                "fed_id": str(fed_id),
+                "fed_name": str(fed_name),
+                "owner_id": int(user_id),
+                "fadmins": [],
+                "owner_mention": "",
+                "banned_users": [],
+                "chat_ids": [],
+                "log_group_id": config.LOGGER_ID,
+            }
+        )
+
+    async def get_fed_info(self, fed_id):
+        return await self.db.feds.find_one({"fed_id": str(fed_id)})
+
+    async def get_feds_by_owner(self, owner_id):
+        return [fed async for fed in self.db.feds.find({"owner_id": int(owner_id)})]
+
+    async def del_fed(self, fed_id):
+        return await self.db.feds.delete_one({"fed_id": str(fed_id)})
+
+    async def fed_rename(self, fed_id, newname):
+        return await self.db.feds.update_one(
+            {"fed_id": str(fed_id)},
+            {"$set": {"fed_name": str(newname)}},
+        )
+
+    async def transfer_owner(self, fed_id, current_owner, new_owner):
+        return await self.db.feds.update_one(
+            {"fed_id": str(fed_id), "owner_id": int(current_owner)},
+            {"$set": {"owner_id": int(new_owner)}},
+        )
+
+    async def search_user_in_fed(self, fed_id, user_id):
+        fed = await self.db.feds.find_one({"fed_id": str(fed_id)})
+        return user_id in fed.get("fadmins", []) if fed else False
+
+    async def user_join_fed(self, fed_id, user_id):
+        return await self.db.feds.update_one(
+            {"fed_id": str(fed_id)},
+            {"$addToSet": {"fadmins": int(user_id)}},
+        )
+
+    async def user_demote_fed(self, fed_id, user_id):
+        return await self.db.feds.update_one(
+            {"fed_id": str(fed_id)},
+            {"$pull": {"fadmins": int(user_id)}},
+        )
+
+    async def search_fed_by_id(self, fed_id):
+        return await self.db.feds.find_one({"fed_id": str(fed_id)})
+
+    async def chat_join_fed(self, fed_id, chat_title, chat_id):
+        return await self.db.feds.update_one(
+            {"fed_id": str(fed_id)},
+            {"$addToSet": {"chat_ids": str(chat_id)}},
+        )
+
+    async def chat_leave_fed(self, chat_id):
+        # This is inefficient but functional for small scale
+        # Ideally we store fed_id in chat document too
+        async for fed in self.db.feds.find():
+            if str(chat_id) in fed.get("chat_ids", []):
+                return await self.db.feds.update_one(
+                    {"fed_id": fed["fed_id"]},
+                    {"$pull": {"chat_ids": str(chat_id)}},
+                )
+        return False
+
+    async def get_fed_id(self, chat_id):
+        async for fed in self.db.feds.find():
+            if str(chat_id) in fed.get("chat_ids", []):
+                return fed["fed_id"]
+        return None
+
+    async def add_fban_user(self, fed_id, user_id, reason):
+        return await self.db.feds.update_one(
+            {"fed_id": str(fed_id)},
+            {
+                "$push": {
+                    "banned_users": {
+                        "user_id": int(user_id),
+                        "reason": str(reason),
+                        "date": int(time()),
+                    }
+                }
+            },
+        )
+
+    async def remove_fban_user(self, fed_id, user_id):
+        fed = await self.db.feds.find_one({"fed_id": str(fed_id)})
+        if not fed:
+            return False
+        new_banned = [u for u in fed.get("banned_users", []) if u["user_id"] != int(user_id)]
+        return await self.db.feds.update_one(
+            {"fed_id": str(fed_id)},
+            {"$set": {"banned_users": new_banned}},
+        )
+
+    async def check_banned_user(self, fed_id, user_id):
+        fed = await self.db.feds.find_one({"fed_id": str(fed_id)})
+        if not fed:
+            return False
+        for user in fed.get("banned_users", []):
+            if user["user_id"] == int(user_id):
+                return user
+        return False
+
+
+    # AUTO APPROVE METHODS
+    async def set_auto_approve(self, chat_id: int, status: bool):
+        await self.db.auto_approve.update_one(
+            {"_id": chat_id},
+            {"$set": {"status": status}},
+            upsert=True,
+        )
+
+    async def get_auto_approve(self, chat_id: int) -> bool:
+        doc = await self.db.auto_approve.find_one({"_id": chat_id})
+        return doc["status"] if doc else False
+
+
+    # CHAT BLACKLIST FILTERS (Word Blacklist)
+    async def add_chat_filter(self, chat_id: int, word: str):
+        await self.db.chat_filters.update_one(
+            {"_id": chat_id},
+            {"$addToSet": {"filters": str(word)}},
+            upsert=True,
+        )
+
+    async def remove_chat_filter(self, chat_id: int, word: str):
+        await self.db.chat_filters.update_one(
+            {"_id": chat_id},
+            {"$pull": {"filters": str(word)}},
+        )
+
+    async def get_chat_filters(self, chat_id: int) -> list[str]:
+        doc = await self.db.chat_filters.find_one({"_id": chat_id})
+        return doc["filters"] if doc else []
+
+
+    # FILTERS (Auto-Reply)
+    async def save_filter(self, chat_id: int, name: str, _filter: dict):
+        name = name.lower().strip()
+        _filter["name"] = name
+        await self.db.filters.update_one(
+            {"chat_id": chat_id, "name": name},
+            {"$set": _filter},
+            upsert=True,
+        )
+
+    async def get_filter(self, chat_id: int, name: str) -> dict | None:
+        name = name.lower().strip()
+        return await self.db.filters.find_one({"chat_id": chat_id, "name": name})
+
+    async def get_filters_names(self, chat_id: int) -> list[str]:
+        return [
+            doc["name"]
+            async for doc in self.db.filters.find({"chat_id": chat_id})
+        ]
+
+    async def delete_filter(self, chat_id: int, name: str) -> bool:
+        name = name.lower().strip()
+        result = await self.db.filters.delete_one({"chat_id": chat_id, "name": name})
+        return result.deleted_count > 0
+
+    async def deleteall_filters(self, chat_id: int) -> bool:
+        result = await self.db.filters.delete_many({"chat_id": chat_id})
+        return result.deleted_count > 0
+
+
+    # AUTO FORWARD METHODS
+    async def add_forward(self, source_id: int, dest_id: int):
+        await self.db.forwards.update_one(
+            {"_id": source_id},
+            {"$addToSet": {"dests": dest_id}},
+            upsert=True,
+        )
+
+    async def remove_forward(self, source_id: int, dest_id: int):
+        await self.db.forwards.update_one(
+            {"_id": source_id},
+            {"$pull": {"dests": dest_id}},
+        )
+
+    async def get_forwards(self, source_id: int) -> list[int]:
+        doc = await self.db.forwards.find_one({"_id": source_id})
+        return doc["dests"] if doc else []
+
+    async def get_all_forward_sources(self):
+        # Useful for caching if needed
+        return [doc["_id"] async for doc in self.db.forwards.find()]
+
+    # SANGMATA METHODS
+    async def update_sangmata_user(self, user_id: int, username: str, first_name: str, last_name: str):
+        await self.sangmata_users.update_one(
+            {"_id": user_id},
+            {"$set": {"username": username, "first_name": first_name, "last_name": last_name}},
+            upsert=True
+        )
+
+    async def get_sangmata_user(self, user_id: int):
+        doc = await self.sangmata_users.find_one({"_id": user_id})
+        if doc:
+            return doc.get("username"), doc.get("first_name"), doc.get("last_name")
+        return None, None, None
+
+    async def set_sangmata_status(self, chat_id: int, status: bool):
+        await self.sangmata_chats.update_one(
+            {"_id": chat_id},
+            {"$set": {"enabled": status}},
+            upsert=True
+        )
+
+    async def is_sangmata_on(self, chat_id: int) -> bool:
+        doc = await self.sangmata_chats.find_one({"_id": chat_id})
+        return doc and doc.get("enabled", False)
+
+    # AFK METHODS
+    async def add_afk(self, user_id: int, details: dict):
+        await self.afk.update_one(
+            {"_id": user_id},
+            {"$set": details},
+            upsert=True
+        )
+
+    async def remove_afk(self, user_id: int):
+        await self.afk.delete_one({"_id": user_id})
+
+    async def is_afk(self, user_id: int):
+        doc = await self.afk.find_one({"_id": user_id})
+        if doc:
+            return True, doc
+        return False, {}

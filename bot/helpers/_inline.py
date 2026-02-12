@@ -86,10 +86,17 @@ class Inline:
                 ]
             ]
         else:
-            cbs = ["admins", "auth", "autoplay", "blist", "login", "ping", "play", "player", "queue", "stats", "sudo"]
+            # Music bot commands
+            music_cbs = ["admins", "auth", "autoplay", "blist", "login", "ping", "play", "player", "queue", "stats", "sudo"]
+            # Group utility features
+            group_cbs = ["federation", "locks", "filters", "admin", "afk", "sangmata", "autoforward"]
+            # Fun & tools
+            fun_cbs = ["games", "memes", "extras", "ytdl", "quotly", "stickers"]
+            
+            all_cbs = music_cbs + group_cbs + fun_cbs
             buttons = [
-                self.ikb(text=cb.capitalize(), callback_data=f"help {cb}")
-                for cb in cbs
+                self.ikb(text=cb.capitalize().replace("_", " "), callback_data=f"help {cb}")
+                for cb in all_cbs
             ]
             rows = [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
 
