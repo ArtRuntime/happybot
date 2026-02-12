@@ -153,25 +153,63 @@ class MongoDB:
         Get the assistant client for a chat.
         Starts the client if it's not running (Lazy Loading).
         """
+        from bot import userbot
+        
         if chat_id not in self.assistant:
             doc = await self.assistantdb.find_one({"_id": chat_id})
             if doc and "name" in doc:
                  # Use assigned name
                  name = doc["name"]
             else:
-                 # Assign one randomly from available sessions if none assigned
-                 # For now, we pick a random session name from DB
+                 # Import app for checking group members
+                 from bot import app
+                 
+                 # First, check if any assistant is already in this group
                  all_sessions = await self.get_all_sessions(include_inactive=False)
                  if not all_sessions:
-                     # Fallback if no sessions in DB (shouldn't happen if initialized properly)
                      logger.error("No active sessions available to assign!")
                      raise ValueError("No active sessions available")
-                     
-                 # Pick random
-                 selected = all_sessions[randint(0, len(all_sessions) - 1)]
-                 name = selected["name"]
+                 
+                 
+                 existing_assistants = []  # List of (session_name, active_calls_count)
+                 
+                 # Check each assistant to see if they're already in the group
+                 for session in all_sessions:
+                     session_name = session["name"]
+                     try:
+                         # Get the userbot client for this session
+                         ub_client = await userbot.get_client_by_name(session_name)
+                         
+                         # Check if this assistant is in the chat
+                         try:
+                             member = await app.get_chat_member(chat_id, ub_client.id)
+                             # Assistant found in group!
+                             # Count how many active calls this assistant has
+                             active_calls = await self.db.calls.count_documents({"assistant": session_name})
+                             existing_assistants.append((session_name, active_calls))
+                             logger.debug(f"Found assistant '{session_name}' in chat {chat_id} with {active_calls} active calls")
+                         except Exception:
+                             # Not a member, continue checking
+                             pass
+                     except Exception as e:
+                         logger.debug(f"Error checking session {session_name}: {e}")
+                         continue
+                 
+                 if existing_assistants:
+                     # Pick the assistant with the least active calls (least busy)
+                     existing_assistants.sort(key=lambda x: x[1])  # Sort by active_calls count
+                     name = existing_assistants[0][0]
+                     active_calls_count = existing_assistants[0][1]
+                     logger.info(f"Found {len(existing_assistants)} assistant(s) in chat {chat_id}, using '{name}' ({active_calls_count} active calls)")
+
+                 else:
+                     # No existing assistant found, assign one randomly
+                     selected = all_sessions[randint(0, len(all_sessions) - 1)]
+                     name = selected["name"]
+                     logger.info(f"No existing assistant in chat {chat_id}, assigned '{name}'")
+                 
                  await self.set_assistant(chat_id, name)
-            
+        
             self.assistant[chat_id] = name
         
         # Get name

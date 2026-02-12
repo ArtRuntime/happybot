@@ -24,6 +24,7 @@ class TgCall(PyTgCalls):
         self._consecutive_failures: dict[int, int] = defaultdict(int)
         self._play_next_locks: dict[int, asyncio.Lock] = {}
         self._watchdog_tasks: dict[int, asyncio.Task] = {}  # Watchdog for stuck streams
+        self._unmute_keeper_tasks: dict[int, asyncio.Task] = {}  # Periodic unmute keeper
 
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
@@ -54,6 +55,9 @@ class TgCall(PyTgCalls):
         
         # Cancel watchdog timer
         self._cancel_watchdog(chat_id)
+        
+        # Cancel unmute keeper
+        self._cancel_unmute_keeper(chat_id)
         
         # Cleanup current song and update UI
         media = await queue.get_current(chat_id)
@@ -160,12 +164,66 @@ class TgCall(PyTgCalls):
         
         self._watchdog_tasks[chat_id] = asyncio.create_task(watchdog())
 
+
     def _cancel_watchdog(self, chat_id: int) -> None:
         """Cancel watchdog timer for a chat."""
         if chat_id in self._watchdog_tasks:
             try:
                 self._watchdog_tasks[chat_id].cancel()
                 del self._watchdog_tasks[chat_id]
+            except:
+                pass
+
+    async def _start_unmute_keeper(self, chat_id: int) -> None:
+        """Start a periodic unmute keeper to prevent auto-mute during long sessions."""
+        # Cancel any existing unmute keeper for this chat
+        if chat_id in self._unmute_keeper_tasks:
+            try:
+                self._unmute_keeper_tasks[chat_id].cancel()
+            except:
+                pass
+        
+        async def unmute_keeper():
+            try:
+                while True:
+                    # Wait 30 seconds between checks
+                    await asyncio.sleep(30)
+                    
+                    # Check if still actively playing
+                    if not await db.get_call(chat_id):
+                        break  # Not in call anymore, stop keeper
+                    
+                    # Check if paused
+                    call_info = await db.db.calls.find_one({"_id": chat_id})
+                    if call_info and call_info.get("paused", False):
+                        continue  # Skip if manually paused
+                    
+                    # Force unmute/resume to prevent Telegram auto-mute
+                    try:
+                        client = await db.get_assistant(chat_id)
+                        await client.resume(chat_id)
+                        logger.debug(f"Unmute keeper active for chat {chat_id}")
+                    except Exception as e:
+                        logger.debug(f"Unmute keeper check failed for {chat_id}: {e}")
+                        
+            except asyncio.CancelledError:
+                pass  # Normal cancellation when playback stops
+            except Exception as e:
+                logger.error(f"Unmute keeper error for {chat_id}: {e}")
+            finally:
+                if chat_id in self._unmute_keeper_tasks:
+                    del self._unmute_keeper_tasks[chat_id]
+        
+        self._unmute_keeper_tasks[chat_id] = asyncio.create_task(unmute_keeper())
+        logger.info(f"Started unmute keeper for chat {chat_id}")
+
+    def _cancel_unmute_keeper(self, chat_id: int) -> None:
+        """Cancel unmute keeper for a chat."""
+        if chat_id in self._unmute_keeper_tasks:
+            try:
+                self._unmute_keeper_tasks[chat_id].cancel()
+                del self._unmute_keeper_tasks[chat_id]
+                logger.info(f"Stopped unmute keeper for chat {chat_id}")
             except:
                 pass
 
@@ -423,6 +481,9 @@ class TgCall(PyTgCalls):
                 duration_sec = getattr(media, 'duration_sec', 0) or utils.to_seconds(media.duration)
                 if duration_sec > 0:
                     await self._start_watchdog(chat_id, duration_sec)
+                
+                # Start unmute keeper to prevent Telegram auto-mute during long sessions
+                await self._start_unmute_keeper(chat_id)
                 
                 # Track this song for building recommendation dataset
                 try:
