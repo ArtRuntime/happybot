@@ -228,25 +228,39 @@ class Userbot(Client):
         # Only promote if not already an admin
         if not is_admin:
             try:
-                # Promote to admin
+                # Get Bot's privileges to know what we can grant
+                me_member = await app.get_chat_member(config.LOGGER_ID, app.me.id)
+                my_privileges = me_member.privileges
+                
+                if not my_privileges or not my_privileges.can_promote_members:
+                    logger.error("⚠️ Bot needs 'Promote Members' permission in logs group!")
+                    return
+
+                # Promote with available permissions (similar to MissKatyPyro)
                 await app.promote_chat_member(
                     config.LOGGER_ID,
                     client.id,
                     privileges=types.ChatPrivileges(
-                        can_manage_chat=False,
-                        can_delete_messages=False,
-                        can_manage_video_chats=False,
-                        can_restrict_members=False,
-                        can_promote_members=False,
+                        can_manage_chat=my_privileges.can_manage_chat,
+                        can_delete_messages=my_privileges.can_delete_messages,
+                        can_manage_video_chats=my_privileges.can_manage_video_chats,
+                        can_restrict_members=my_privileges.can_restrict_members,
+                        can_promote_members=False, # Don't let assistant promote others
                         can_change_info=False,
-                        can_invite_users=False,
-                        can_pin_messages=False,
+                        can_invite_users=my_privileges.can_invite_users,
+                        can_pin_messages=my_privileges.can_pin_messages,
                     )
                 )
                 logger.info(f"✓ Promoted '{client.name}' as admin in logs group")
                 await asyncio.sleep(1)  # Wait for Telegram to process
             except Exception as e:
-                logger.error(f"✗ Failed to promote '{client.name}': {e}")
+                err_str = str(e)
+                if "USER_CREATOR" in err_str:
+                     logger.info(f"✓ Assistant '{client.name}' is the CREATOR of logs group (already admin)")
+                elif "CHANNELS_ADMIN_PUBLIC_TOO_MUCH" in err_str:
+                     logger.error(f"✗ Failed to promote '{client.name}': Too many public admins")
+                else:
+                    logger.error(f"✗ Failed to promote '{client.name}': {e}")
         
         # Always try to send startup message if we just joined/verified
         try:
