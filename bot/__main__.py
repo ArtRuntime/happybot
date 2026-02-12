@@ -97,6 +97,9 @@ async def main():
     for module in all_modules:
         importlib.import_module(f"bot.plugins.{module}")
     logger.info(f"Loaded {len(all_modules)} modules.")
+    
+    # Invite all assistants to logs group after bot is fully ready
+    await userbot.invite_assistants_to_logs()
 
     if config.COOKIES_URL or config.BROWSER_JSON_URL:
         # Initial fetch

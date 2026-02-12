@@ -101,5 +101,11 @@ async def change_quality(client, message, **kwargs):
     if choice not in valid_options:
          return await message.reply_text("❌ Invalid option. Use: low, medium, high, studio")
          
+    previous_quality = await db.get_quality(chat_id)
     await db.set_quality(chat_id, choice)
-    await message.reply_text(f"✅ **Audio Quality set to: {choice.title()}**\n\nNew quality will be used from the next song.")
+    await message.reply_text(
+        f"✅ **Audio Quality Updated**\n\n"
+        f"**Previous:** {previous_quality.title()}\n"
+        f"**Current:** {choice.title()}\n\n"
+        "New quality will be used from the next song."
+    )

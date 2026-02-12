@@ -347,6 +347,20 @@ class MongoDB:
             self.autoplay[chat_id] = doc["status"] if doc else False
         return self.autoplay[chat_id]
 
+    # AUTO_LEAVE METHODS (per-chat override)
+    async def set_auto_leave_enabled(self, chat_id: int, enabled: bool):
+        """Set whether auto-leave is enabled for a specific chat. True = enabled (default), False = disabled."""
+        await self.db.auto_leave.update_one(
+            {"_id": chat_id},
+            {"$set": {"enabled": enabled}},
+            upsert=True,
+        )
+
+    async def get_auto_leave_enabled(self, chat_id: int) -> bool:
+        """Get whether auto-leave is enabled for a specific chat. Returns True by default."""
+        doc = await self.db.auto_leave.find_one({"_id": chat_id})
+        return doc["enabled"] if doc else True  # Default: True (auto-leave enabled)
+
     # QUALITY METHODS
     async def set_quality(self, chat_id: int, quality: str):
         await self.db.quality.update_one(

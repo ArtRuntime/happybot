@@ -36,6 +36,12 @@ async def auto_leave():
                     ]:
                         if chat_id in db.active_calls:
                             continue
+                        
+                        # Check if auto-leave is enabled for this chat
+                        auto_leave_enabled = await db.get_auto_leave_enabled(chat_id)
+                        if not auto_leave_enabled:
+                            continue  # Skip this chat - auto-leave disabled by sudo
+                        
                         await ub.leave_chat(chat_id)
                         left += 1
                     await asyncio.sleep(5)
@@ -152,9 +158,11 @@ async def vc_watcher(sleep=15):
                 pass
 
 
+
+
 if config.AUTO_END:
     tasks.append(asyncio.create_task(vc_watcher()))
-if config.AUTO_LEAVE:
-    tasks.append(asyncio.create_task(auto_leave()))
+# AUTO_LEAVE is now always enabled with per-chat control
+tasks.append(asyncio.create_task(auto_leave()))
 tasks.append(asyncio.create_task(track_time()))
 tasks.append(asyncio.create_task(update_timer()))

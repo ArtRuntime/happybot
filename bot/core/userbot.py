@@ -3,6 +3,7 @@
 # This file is part of happybot
 
 
+import asyncio
 from pyrogram import Client
 
 from bot import config, logger
@@ -47,50 +48,6 @@ class Userbot(Client):
         client.user_name = me.first_name # Telegram name
         client.username = me.username
         client.mention = me.mention
-        
-        # Join and announce in logs group
-        if config.LOGGER_ID:
-            try:
-                # Try to join the logs group
-                await client.join_chat(config.LOGGER_ID)
-                logger.info(f"Assistant '{name}' joined logs group")
-            except Exception as e:
-                logger.debug(f"Assistant '{name}' already in logs group or couldn't join: {e}")
-            
-            try:
-                # Promote to admin so it can send messages
-                from bot import app
-                from pyrogram import types
-                await app.promote_chat_member(
-                    config.LOGGER_ID,
-                    client.id,
-                    privileges=types.ChatPrivileges(
-                        can_manage_chat=False,
-                        can_delete_messages=False,
-                        can_manage_video_chats=False,
-                        can_restrict_members=False,
-                        can_promote_members=False,
-                        can_change_info=False,
-                        can_invite_users=False,
-                        can_pin_messages=False,
-                        can_post_messages=True,  # Allow posting
-                    )
-                )
-                logger.info(f"Assistant '{name}' promoted in logs group")
-            except Exception as e:
-                logger.debug(f"Failed to promote assistant '{name}': {e}")
-            
-            try:
-                # Send startup message from the assistant itself
-                await client.send_message(
-                    config.LOGGER_ID,
-                    f"✅ **Assistant Started**\n\n"
-                    f"**Name:** {client.user_name}\n"
-                    f"**Username:** @{client.username or 'None'}\n"
-                    f"**Session:** `{name}`"
-                )
-            except Exception as e:
-                logger.error(f"Assistant '{name}' failed to send startup message: {e}")
         
         self.clients.append(client)
         self._client_map[name] = client
@@ -218,6 +175,93 @@ class Userbot(Client):
             logger.error(f"Failed to pre-load assistants: {e}")
             
         logger.info("Userbot Manager initialized (Lazy Loading Enabled)")
+
+    async def invite_assistants_to_logs(self):
+        """Invite all active assistants to logs group. Call this after bot is fully ready."""
+        if not config.LOGGER_ID:
+            return
+            
+        from bot import app
+        from pyrogram import types
+        
+        logger.info("Inviting assistants to logs group...")
+        logger.info(f"Found {len(self.clients)} assistants to process")
+        
+        for client in self.clients:
+            logger.info(f"Processing assistant '{client.name}' (ID: {client.id})...")
+            
+            # Check if assistant is already in the logs group
+            is_member = False
+            is_admin = False
+            try:
+                member = await app.get_chat_member(config.LOGGER_ID, client.id)
+                is_member = True
+                # Check if already an admin
+                if member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+                    is_admin = True
+                    logger.info(f"✓ Assistant '{client.name}' already in logs group (admin)")
+                else:
+                    logger.info(f"✓ Assistant '{client.name}' already in logs group (member)")
+            except Exception as e:
+                logger.info(f"✗ Assistant '{client.name}' not in logs group yet: {e}")
+            
+            # Only invite if not already a member
+            if not is_member:
+                # Use the same method as play command (export invite link and join)
+                try:
+                    # Get or export invite link
+                    invite_link = await app.export_chat_invite_link(config.LOGGER_ID)
+                    logger.info(f"Exported invite link for '{client.name}'")
+                    await asyncio.sleep(0.5)
+                    
+                    # Assistant joins via invite link
+                    await client.join_chat(invite_link)
+                    logger.info(f"✓ Assistant '{client.name}' joined logs group via invite link")
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    logger.error(f"✗ Failed to invite '{client.name}': {e}")
+            
+            # Only promote if not already an admin
+            if not is_admin:
+                try:
+                    # Promote to admin
+                    await app.promote_chat_member(
+                        config.LOGGER_ID,
+                        client.id,
+                        privileges=types.ChatPrivileges(
+                            can_manage_chat=False,
+                            can_delete_messages=False,
+                            can_manage_video_chats=False,
+                            can_restrict_members=False,
+                            can_promote_members=False,
+                            can_change_info=False,
+                            can_invite_users=False,
+                            can_pin_messages=False,
+                        )
+                    )
+                    logger.info(f"✓ Promoted '{client.name}' as admin in logs group")
+                    await asyncio.sleep(1)  # Wait for Telegram to process
+                except Exception as e:
+                    logger.error(f"✗ Failed to promote '{client.name}': {e}")
+                    logger.error(f"⚠️  Make sure bot has 'Add Admins' permission in logs group!")
+            else:
+                logger.info(f"↷ Assistant '{client.name}' is already an admin, skipping promotion")
+            
+            # Always try to send startup message
+            try:
+                # Send startup message (AFTER adding and promoting)
+                await client.send_message(
+                    config.LOGGER_ID,
+                    f"✅ **Assistant Started**\n\n"
+                    f"**Name:** {client.user_name}\n"
+                    f"**Username:** @{client.username or 'None'}\n"
+                    f"**Session:** `{client.name}`"
+                )
+                logger.info(f"✓ Startup message sent by '{client.name}'")
+            except Exception as e:
+                logger.debug(f"Failed to send startup message for '{client.name}': {e}")
+        
+        logger.info("Finished inviting assistants to logs group")
 
 
     async def exit(self):
