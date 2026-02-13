@@ -304,6 +304,10 @@ class MongoDB:
             async for chat in self.chatsdb.find():
                 self.chats.add(chat["_id"])
         return list(self.chats)
+    
+    async def count_chats(self) -> int:
+        """Fast count of total chats without loading all data"""
+        return await self.chatsdb.count_documents({})
 
     # COMMAND DELETE
     async def get_cmd_delete(self, chat_id: int) -> bool:
@@ -469,6 +473,10 @@ class MongoDB:
             async for user in self.usersdb.find():
                 self.users.add(user["_id"])
         return list(self.users)
+    
+    async def count_users(self) -> int:
+        """Fast count of total users without loading all data"""
+        return await self.usersdb.count_documents({})
 
 
     async def migrate_coll(self) -> None:

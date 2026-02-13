@@ -9,10 +9,14 @@ from bot.helpers.feds_utils import capture_err
 __MODULE__ = "Memes"
 __HELP__ = """
 <b>Memes:</b>
-/memify <text> - Reply to a sticker/photo to add text. Use `;` to split top/bottom text.
+/memify <text> [size] - Reply to a sticker/photo to add text. Use `;` to split top/bottom text.
+/mmf <text> [size] - Same as memify.
+
+<b>Size options:</b> small, medium, large, or custom number (e.g., 80)
+<b>Example:</b> <code>/mmf Top;Bottom large</code>
 """
 
-async def draw_meme_text(image_path, text):
+async def draw_meme_text(image_path, text, font_size_option="large"):
     img = Image.open(image_path)
     if img.mode != "RGBA":
         img = img.convert("RGBA")
@@ -28,10 +32,28 @@ async def draw_meme_text(image_path, text):
              font_path = None # Default
              
     if font_path:
-        # Large, bold font for classic meme style (250/640 ratio)
-        font_size = int((250 / 640) * i_width)
-        # Ensure minimum font size of 60px for small images
-        font_size = max(60, font_size)
+        # Determine font size based on user preference
+        size_presets = {
+            "small": (150 / 640, 40),    # ratio, minimum
+            "medium": (200 / 640, 50),
+            "large": (250 / 640, 60),
+        }
+        
+        # Check if it's a preset or custom number
+        if font_size_option.lower() in size_presets:
+            ratio, min_size = size_presets[font_size_option.lower()]
+            font_size = int(ratio * i_width)
+            font_size = max(min_size, font_size)
+        else:
+            # Try to parse as custom pixel value
+            try:
+                font_size = int(font_size_option)
+                font_size = max(20, min(500, font_size))  # Clamp between 20-500px
+            except ValueError:
+                # Default to large if invalid
+                font_size = int((250 / 640) * i_width)
+                font_size = max(60, font_size)
+        
         m_font = ImageFont.truetype(font_path, font_size)
     else:
         m_font = ImageFont.load_default()
@@ -107,15 +129,28 @@ async def memify_cmd(client, message):
          return await message.reply_text("Reply to a sticker or photo.")
          
     if len(message.command) < 2:
-         return await message.reply_text("Provide text! Usage: `/mmf Top Text;Bottom Text`")
-         
-    text = message.text.split(None, 1)[1]
+         return await message.reply_text(
+             "Provide text! Usage: <code>/mmf Top Text;Bottom Text [size]</code>\n"
+             "Size: small, medium, large, or number (e.g., 80)"
+         )
+    
+    # Parse text and optional size
+    args = message.text.split(None, 1)[1]
+    
+    # Check if last word is a size option
+    parts = args.rsplit(None, 1)
+    if len(parts) == 2 and (parts[1].lower() in ["small", "medium", "large"] or parts[1].isdigit()):
+        text = parts[0]
+        size_option = parts[1]
+    else:
+        text = args
+        size_option = "large"  # default
     
     msg = await message.reply_text("Processing meme...")
     
     try:
         file_path = await reply.download()
-        output = await draw_meme_text(file_path, text)
+        output = await draw_meme_text(file_path, text, size_option)
         
         await message.reply_sticker(output)
         

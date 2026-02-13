@@ -47,8 +47,6 @@ rmsession - Remove an assistant session (sudo only)
 removesession - Remove an assistant session (sudo only)
 sessions - List all active assistants (sudo only)
 listsessions - List all active assistants (sudo only)
-logs - Get bot logs (sudo only)
-logger - Toggle logger mode (sudo only)
 restart - Restart the bot (sudo only)
 addfallback - Add a fallback Cookie file (sudo only)
 login - Login assistant account (private only)
@@ -57,8 +55,6 @@ eval - Execute Python code (owner only)
 exec - Execute Python code (owner only)
 vclogger - Toggle voice chat join/leave logger
 autoleave - Toggle auto-leave for current chat (sudo only)
-
-# Federation
 newfed - Create a new federation
 delfed - Delete a federation
 renamefed - Rename a federation
@@ -71,8 +67,6 @@ fedinfo - Show info about a federation
 fedadmins - Show federation admins
 fbanlist - Show banned users in federation
 fstat - Show federation statistics
-
-# Group Management
 lock - Lock a message type (e.g. sticker, link)
 unlock - Unlock a message type
 locks - Show locked message types
@@ -83,10 +77,7 @@ autoapprove - Toggle auto-approve join requests
 blacklist_chat - Blacklist valid for chat
 addblacklist - Add word to blacklist
 rmblacklist - Remove word from blacklist
-
-# Utilities & Tools
 autoforward - Toggle auto-forwarding
-ocr - Extract text from image
 kang - Add sticker to pack
 unkang - Remove sticker from pack
 getsticker - Convert sticker to image
@@ -100,8 +91,6 @@ urban - Search Urban Dictionary
 currency - Convert currency
 afk - Set Away-From-Keyboard status
 sangmata - Toggle user history tracking
-
-# Fun
 quotly - Create sticker quote from message
 q - Create sticker quote from message
 memify - Add text to sticker/image
@@ -111,10 +100,6 @@ tebaklontong - Guess the riddle game
 tebakkata - Guess the word game
 tebaktebakan - Riddle game
 stopgame - Stop active game
-
-# Video Downloader
 ytdl - Download video/audio from any URL (yt-dlp supported)
-
-# Admin Commands
 ban - Ban a user from the chat
 unban - Unban a user from the chat
