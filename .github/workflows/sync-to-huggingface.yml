@@ -53,7 +53,8 @@ jobs:
           # 3. GitHub repository se code.7z aur Dockerfile ko cloned HF repository mein copy karein
           cp code.7z $TARGET_DIR/
           cp Dockerfile $TARGET_DIR/
-          echo "Copied code.7z and Dockerfile to cloned HF repo."
+          cp README.md $TARGET_DIR/
+          echo "Copied code.7z, Dockerfile, and README.md to cloned HF repo."
 
           # 4. Cloned HF repository directory mein jaayen
           cd $TARGET_DIR
