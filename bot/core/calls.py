@@ -203,8 +203,8 @@ class TgCall(PyTgCalls):
         async def unmute_keeper():
             try:
                 while True:
-                    # Wait 30 seconds between checks
-                    await asyncio.sleep(30)
+                    # Wait 10 seconds between checks (more frequent to prevent aggressive auto-mute)
+                    await asyncio.sleep(10)
                     
                     # Check if still actively playing
                     if not await db.get_call(chat_id):
