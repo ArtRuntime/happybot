@@ -62,6 +62,14 @@ async def run_ytdl(url: str, audio_only: bool = False):
         else:
             print(f"[ytdl] Trying with {strategy_name}")
         
+        # Use the same proxy as the bot for consistency
+        # This allows Instagram and other sites to work through the VPN
+        from bot import config
+        if config.PROXY_URL:
+            cmd.insert(-1, "--proxy")
+            cmd.insert(-1, config.PROXY_URL)
+            print(f"[ytdl] Using proxy: {config.PROXY_URL}")
+        
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -100,8 +108,20 @@ async def run_ytdl(url: str, audio_only: bool = False):
             last_error = error
             print(f"[ytdl] ✗ Failed with {strategy_name}: {error[:100]}")
     
-    # All strategies failed
-    raise Exception(f"yt-dlp failed with all strategies. Last error: {last_error}")
+    # All strategies failed - provide helpful error message
+    if "Failed to resolve" in last_error or "No address associated with hostname" in last_error:
+        raise Exception(
+            "Network/DNS error: Cannot reach the website. "
+            "This might be due to VPN/proxy blocking the site or DNS issues. "
+            "Try a different URL or check your network connection."
+        )
+    elif "No csrf token" in last_error:
+        raise Exception(
+            "Instagram authentication failed. The site may be blocking automated downloads. "
+            "Try again later or use a different link."
+        )
+    else:
+        raise Exception(f"yt-dlp failed with all strategies. Last error: {last_error}")
 
 
 @app.on_message(filters.command("ytdl") & filters.group)
