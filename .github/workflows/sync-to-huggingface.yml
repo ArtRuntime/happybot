@@ -65,5 +65,5 @@ jobs:
           git commit -m "$COMMIT_MSG"
           
           # Force push to main branch
-          git push -f origin temp_branch:main
+          git push origin temp_branch:main
           echo "Successfully force-pushed changes to Hugging Face Hub (history wiped)!"
