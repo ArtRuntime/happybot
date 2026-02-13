@@ -210,16 +210,21 @@ class TgCall(PyTgCalls):
                     if not await db.get_call(chat_id):
                         break  # Not in call anymore, stop keeper
                     
-                    # Check if paused
-                    call_info = await db.db.calls.find_one({"_id": chat_id})
-                    if call_info and call_info.get("paused", False):
-                        continue  # Skip if manually paused
+                    # Check if paused - use the db.playing() method for accurate state
+                    is_playing = await db.playing(chat_id)
+                    if not is_playing:
+                        # Stream is paused, don't resume it
+                        logger.debug(f"Unmute keeper: chat {chat_id} is paused, skipping")
+                        continue
                     
-                    # Force unmute/resume to prevent Telegram auto-mute
+                    # Only unmute/resume if actively playing (not paused)
                     try:
                         client = await db.get_assistant(chat_id)
-                        await client.resume(chat_id)
-                        logger.debug(f"Unmute keeper active for chat {chat_id}")
+                        # Double-check pause state before resuming
+                        current_state = await db.playing(chat_id)
+                        if current_state:  # Only if still playing
+                            await client.resume(chat_id)
+                            logger.debug(f"Unmute keeper active for chat {chat_id}")
                     except Exception as e:
                         logger.debug(f"Unmute keeper check failed for {chat_id}: {e}")
                         

@@ -89,6 +89,7 @@ run - Execute code (Glot.io)
 paste - Paste text to private bin
 urban - Search Urban Dictionary
 currency - Convert currency
+ytdl - Download video/audio from any URL (yt-dlp supported)
 afk - Set Away-From-Keyboard status
 sangmata - Toggle user history tracking
 quotly - Create sticker quote from message
@@ -100,6 +101,5 @@ riddle - Guess the riddle game
 wordgame - Guess the word game
 riddlegame - Riddle game
 stopgame - Stop the current game
-ytdl - Download video/audio from any URL (yt-dlp supported)
 ban - Ban a user from the chat
 unban - Unban a user from the chat
