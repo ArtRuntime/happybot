@@ -37,7 +37,8 @@ jobs:
           HF_USERNAME: alex5402
           HF_REPO_TYPE: spaces #'models' ya 'spaces'
           HF_REPO_NAME: happybot 
-          TARGET_DIR: hf-repo-clone 
+          TARGET_DIR: hf-repo-clone
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           echo "Starting sync process..."
 
@@ -67,7 +68,8 @@ jobs:
             echo "No changes detected. Skipping commit and push."
           else
             # 7. Changes ko commit karein
-            git commit -m "Sync encrypted source from GitHub Action (GitHub SHA: ${{ github.sha }})"
+            # GitHub Action ka commit message use karein
+            git commit -m "$COMMIT_MSG"
             echo "Changes committed locally."
 
             # 8. Changes ko Hugging Face Hub par push karein
