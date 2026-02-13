@@ -223,8 +223,17 @@ class TgCall(PyTgCalls):
                         # Double-check pause state before resuming
                         current_state = await db.playing(chat_id)
                         if current_state:  # Only if still playing
-                            await client.resume(chat_id)
-                            logger.debug(f"Unmute keeper active for chat {chat_id}")
+                            # Explicitly mute then unmute to force state update
+                            # This helps when Telegram auto-mutes the participant
+                            try:
+                                await client.mute_stream(chat_id)
+                                await asyncio.sleep(0.5)
+                                await client.unmute_stream(chat_id)
+                                logger.debug(f"Unmute keeper: toggled mute/unmute for chat {chat_id}")
+                            except AttributeError:
+                                # Fallback for older pytgcalls versions
+                                await client.resume(chat_id)
+                                logger.debug(f"Unmute keeper: called resume for chat {chat_id}")
                     except Exception as e:
                         logger.debug(f"Unmute keeper check failed for {chat_id}: {e}")
                         
