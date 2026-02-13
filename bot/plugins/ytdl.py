@@ -22,17 +22,20 @@ async def run_ytdl(url: str, audio_only: bool = False):
     if audio_only:
         base_cmd = [
             "yt-dlp",
-            "-f", "bestaudio",
+            "-f", "bestaudio/best",  # Fallback to best if bestaudio not available
             "--extract-audio",
             "--audio-format", "mp3",
             "--audio-quality", "0",
             "-o", output_template,
         ]
     else:
+        # Smart format selection with fallback
+        # Try: 720p → best video+audio → best available
         base_cmd = [
             "yt-dlp",
-            "-f", "best[height<=720]",  # Limit to 720p for faster download/upload
+            "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo+bestaudio/best",
             "-o", output_template,
+            "--merge-output-format", "mp4",  # Ensure compatible format
         ]
     
     # 3-step fallback strategy
