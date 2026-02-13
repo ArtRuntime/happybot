@@ -29,12 +29,29 @@ class TgCall(PyTgCalls):
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
         await db.playing(chat_id, paused=True)
+        # Cancel watchdog when pausing to prevent auto-resume
+        self._cancel_watchdog(chat_id)
         return await client.pause(chat_id)
 
     async def resume(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
         await db.playing(chat_id, paused=False)
-        return await client.resume(chat_id)
+        result = await client.resume(chat_id)
+        
+        # Restart watchdog with remaining duration when resuming
+        try:
+            media = await queue.get_current(chat_id)
+            if media and hasattr(media, 'duration'):
+                import time
+                played_at = getattr(media, 'played_at', time.time())
+                elapsed = time.time() - played_at
+                remaining = max(0, media.duration - int(elapsed))
+                if remaining > 0:
+                    await self._start_watchdog(chat_id, remaining)
+        except Exception as e:
+            logger.error(f"Failed to restart watchdog on resume: {e}")
+        
+        return result
 
     async def stop(self, chat_id: int) -> None:
         try:
