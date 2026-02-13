@@ -12,6 +12,7 @@ from pyrogram.errors import MessageIdInvalid, MessageNotModified
 from pyrogram.types import InputMediaPhoto, Message
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
+from pyrogram.raw import functions
 
 from bot import app, config, db, lang, logger, queue, userbot, yt
 from bot.helpers import Media, Track, buttons, thumb, utils
@@ -201,10 +202,12 @@ class TgCall(PyTgCalls):
                 pass
         
         async def unmute_keeper():
+            counter = 0
             try:
                 while True:
                     # Wait 10 seconds between checks (more frequent to prevent aggressive auto-mute)
                     await asyncio.sleep(10)
+                    counter += 1
                     
                     # Check if still actively playing
                     if not await db.get_call(chat_id):
@@ -217,9 +220,47 @@ class TgCall(PyTgCalls):
                         logger.debug(f"Unmute keeper: chat {chat_id} is paused, skipping")
                         continue
                     
-                    # Only unmute/resume if actively playing (not paused)
                     try:
                         client = await db.get_assistant(chat_id)
+                        
+                        # CONNECTION CHECK (Every 30s / 3 iterations)
+                        # Check if assistant is actually in the call
+                        if counter % 3 == 0:
+                            try:
+                                logger.info(f"Checking assistant connection in chat {chat_id}...")
+                                in_call = await self._is_assistant_in_vc(chat_id, client)
+                                if in_call:
+                                    logger.debug(f"✓ Assistant is in VC for chat {chat_id}")
+                                if not in_call:
+                                    logger.warning(f"⚠️ Assistant missing from VC in chat {chat_id}, forcing rejoin...")
+                                    # Force rejoin
+                                    try:
+                                        media = await queue.get_current(chat_id)
+                                        if media:
+                                            # Get Userbot client for resolution
+                                            ub = await userbot.get_client_by_name(client.name)
+                                            # Rejoin flow
+                                            try:
+                                                await client.leave_group_call(chat_id)
+                                            except:
+                                                pass
+                                            await asyncio.sleep(1)
+                                            
+                                            # Re-stream current media
+                                            stream = Media.get_audio_stream(media.file_path)
+                                            await client.join_group_call(
+                                                chat_id,
+                                                stream,
+                                                stream_type=types.StreamType().pulse_stream,
+                                            )
+                                            logger.info(f"✅ Successfully rejoined VC in chat {chat_id}")
+                                            continue # Skip unmute toggles this loop
+                                    except Exception as e:
+                                        logger.error(f"Failed to auto-rejoin VC in {chat_id}: {e}")
+                            except Exception as e:
+                                logger.error(f"Connection check failed for {chat_id}: {e}")
+
+                        # Only unmute/resume if actively playing (not paused)
                         # Double-check pause state before resuming
                         current_state = await db.playing(chat_id)
                         if current_state:  # Only if still playing
@@ -247,6 +288,46 @@ class TgCall(PyTgCalls):
         
         self._unmute_keeper_tasks[chat_id] = asyncio.create_task(unmute_keeper())
         logger.info(f"Started unmute keeper for chat {chat_id}")
+
+    async def _is_assistant_in_vc(self, chat_id: int, client) -> bool:
+        """Check if assistant is physically present in the Telegram group call."""
+        try:
+            # Get Userbot client (Pyrogram)
+            ub = await userbot.get_client_by_name(client.name)
+            
+            # Resolve peer and find call
+            peer = await ub.resolve_peer(chat_id)
+            if hasattr(peer, 'channel_id'):
+                full_chat = await ub.invoke(functions.channels.GetFullChannel(channel=peer))
+            else:
+                full_chat = await ub.invoke(functions.messages.GetFullChat(chat_id=peer.chat_id))
+            
+            if not full_chat.full_chat.call:
+                return False # No call exists
+                
+            # Check participants
+            results = await ub.invoke(
+                functions.phone.GetGroupParticipants(
+                    call=full_chat.full_chat.call,
+                    ids=[],
+                    sources=[],
+                    offset="",
+                    limit=100
+                )
+            )
+            
+            # Check if self (assistant) is in list
+            my_id = ub.me.id
+            for p in results.participants:
+                if p.peer.user_id == my_id:
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logger.debug(f"Failed to check participant status in {chat_id}: {e}")
+            # Assume True on error to avoid unnecessary rejoin loops due to permission errors
+            return True
 
     def _cancel_unmute_keeper(self, chat_id: int) -> None:
         """Cancel unmute keeper for a chat."""
