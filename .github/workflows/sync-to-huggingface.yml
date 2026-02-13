@@ -44,35 +44,26 @@ jobs:
 
           # 1. Hugging Face repository ko clone karein
           git clone https://hf:$HUGGINGFACE_TOKEN@huggingface.co/$HF_REPO_TYPE/$HF_USERNAME/$HF_REPO_NAME $TARGET_DIR
-          echo "Cloned Hugging Face repository: $HF_REPO_TYPE/$HF_USERNAME/$HF_REPO_NAME"
+          
+          # 2. Create orphan branch to wipe history
+          cd $TARGET_DIR
+          git checkout --orphan temp_branch
+          git rm -rf .
+          cd ..
 
-          # 2. Cloned HF repository ke content ko delete karein
-          # `.git` folder aur `.gitattributes` ko delete nahi karna hai
+          # 3. Clean physical files (keep .git)
           find $TARGET_DIR/ -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitattributes" -exec rm -rf {} +
-          echo "Cleared existing content in cloned HF repo."
-
-          # 3. GitHub repository se code.7z aur Dockerfile ko cloned HF repository mein copy karein
+          
+          # 4. Copy new files
           cp code.7z $TARGET_DIR/
           cp Dockerfile $TARGET_DIR/
           cp README.md $TARGET_DIR/
-          echo "Copied code.7z, Dockerfile, and README.md to cloned HF repo."
-
-          # 4. Cloned HF repository directory mein jaayen
+          
+          # 5. Commit and Force Push
           cd $TARGET_DIR
-
-          # 5. Saare changes ko stage karein
           git add .
-
-          # 6. Check karein ki commit karne ke liye koi changes hain ya nahi
-          if git diff --cached --exit-code; then
-            echo "No changes detected. Skipping commit and push."
-          else
-            # 7. Changes ko commit karein
-            # GitHub Action ka commit message use karein
-            git commit -m "$COMMIT_MSG"
-            echo "Changes committed locally."
-
-            # 8. Changes ko Hugging Face Hub par push karein
-            git push
-            echo "Successfully pushed changes to Hugging Face Hub!"
-          fi
+          git commit -m "$COMMIT_MSG"
+          
+          # Force push to main branch
+          git push -f origin temp_branch:main
+          echo "Successfully force-pushed changes to Hugging Face Hub (history wiped)!"
