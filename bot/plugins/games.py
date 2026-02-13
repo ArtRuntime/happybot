@@ -12,10 +12,10 @@ __HELP__ = """
 <b>Games:</b>
 Play simple games in the group.
 
-/tebakgambar - Guess the image.
-/tebaklontong - Guess the riddle (Lontong style).
-/tebakkata - Guess the word.
-/tebaktebakan - Guess the riddle.
+/guessimg - Guess the image.
+/riddle - Guess the riddle (Lontong style).
+/wordgame - Guess the word.
+/riddlegame - Guess the riddle.
 /stopgame - Stop the current game.
 """
 
@@ -23,26 +23,26 @@ Play simple games in the group.
 GAME_STATUS = {}
 
 GAME_MODES = {
-    "tebakgambar": {
+    "guessimg": {
         "url": "https://yasirapi.eu.org/tebakgambar",
         "type": "image",
         "response_key": "img",
         "answer_key": "jawaban"
     },
-    "tebaklontong": {
+    "riddle": {
         "url": "https://yasirapi.eu.org/tebaklontong",
         "type": "text",
         "response_key": "soal",
         "answer_key": "jawaban",
         "description_key": "deskripsi"
     },
-    "tebakkata": {
+    "wordgame": {
         "url": "https://yasirapi.eu.org/tebakkata",
         "type": "text",
         "response_key": "soal",
         "answer_key": "jawaban"
     },
-    "tebaktebakan": {
+    "riddlegame": {
         "url": "https://yasirapi.eu.org/tebaktebakan",
         "type": "text",
         "response_key": "soal",
@@ -111,11 +111,23 @@ async def play_game(client, message, mode):
         await client.send_message(chat_id, text)
 
 
-@app.on_message(filters.command(["tebakgambar", "tebaklontong", "tebakkata", "tebaktebakan"]) & filters.group)
+
+# Command aliases: old Indonesian names → new English names
+COMMAND_ALIASES = {
+    "tebakgambar": "guessimg",
+    "tebaklontong": "riddle",
+    "tebakkata": "wordgame",
+    "tebaktebakan": "riddlegame"
+}
+
+@app.on_message(filters.command(["guessimg", "riddle", "wordgame", "riddlegame", "tebakgambar", "tebaklontong", "tebakkata", "tebaktebakan"]) & filters.group)
 @capture_err
 async def game_cmd(client, message):
     cmd = message.command[0]
+    # Translate old command to new if needed
+    cmd = COMMAND_ALIASES.get(cmd, cmd)
     await play_game(client, message, cmd)
+
 
 @app.on_message(filters.command("stopgame") & filters.group)
 async def stop_game(client, message):

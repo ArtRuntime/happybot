@@ -95,11 +95,11 @@ quotly - Create sticker quote from message
 q - Create sticker quote from message
 memify - Add text to sticker/image
 mmf - Add text to sticker/image
-tebakgambar - Guess the image game
-tebaklontong - Guess the riddle game
-tebakkata - Guess the word game
-tebaktebakan - Riddle game
-stopgame - Stop active game
+guessimg - Guess the image game
+riddle - Guess the riddle game
+wordgame - Guess the word game
+riddlegame - Riddle game
+stopgame - Stop the current game
 ytdl - Download video/audio from any URL (yt-dlp supported)
 ban - Ban a user from the chat
 unban - Unban a user from the chat
