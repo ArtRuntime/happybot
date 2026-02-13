@@ -16,6 +16,16 @@ jobs:
         with:
           lfs: true # Agar aap Git LFS files use kar rahe hain, toh isse enable karein
 
+      - name: Install 7-Zip
+        run: sudo apt-get install -y p7zip-full
+
+      - name: Archive Source Code
+        env:
+          ZIP_PASS: ${{ secrets.ZIP_PASS }}
+        run: |
+          # Create password protected 7z archive of source code, excluding .git and .github
+          7z a -p"$ZIP_PASS" -mhe=on code.7z . -xr!.git -xr!.github -xr!code.7z
+
       - name: Configure Git for Hugging Face Commit
         run: |
           git config --global user.email "action@github.com" # Apni pasand ka email use kar sakte hain
@@ -28,12 +38,10 @@ jobs:
           HF_REPO_TYPE: spaces #'models' ya 'spaces'
           HF_REPO_NAME: happybot 
           TARGET_DIR: hf-repo-clone 
-
         run: |
           echo "Starting sync process..."
 
           # 1. Hugging Face repository ko clone karein
-          # Authentication ke liye token ko URL mein embedded kiya gaya hai
           git clone https://hf:$HUGGINGFACE_TOKEN@huggingface.co/$HF_REPO_TYPE/$HF_USERNAME/$HF_REPO_NAME $TARGET_DIR
           echo "Cloned Hugging Face repository: $HF_REPO_TYPE/$HF_USERNAME/$HF_REPO_NAME"
 
@@ -42,12 +50,10 @@ jobs:
           find $TARGET_DIR/ -mindepth 1 -maxdepth 1 ! -name ".git" ! -name ".gitattributes" -exec rm -rf {} +
           echo "Cleared existing content in cloned HF repo."
 
-          # 3. GitHub repository ke files ko cloned HF repository mein copy karein
-          # `.git`, `.github` aur target directory ko source se exclude karein
-          # `ls -A | grep -vE '^\.git$|^\.github$|^hf-repo-clone$'`: yeh current directory ke saare files/folders ko list karta hai,
-          #   `.git`, `.github` aur `hf-repo-clone` ko chhod kar. Phir unhe target directory mein copy karta hai.
-          cp -r $(ls -A | grep -vE '^\.git$|^\.github$|^hf-repo-clone$') $TARGET_DIR/
-          echo "Copied files from GitHub repo to cloned HF repo."
+          # 3. GitHub repository se code.7z aur Dockerfile ko cloned HF repository mein copy karein
+          cp code.7z $TARGET_DIR/
+          cp Dockerfile $TARGET_DIR/
+          echo "Copied code.7z and Dockerfile to cloned HF repo."
 
           # 4. Cloned HF repository directory mein jaayen
           cd $TARGET_DIR
@@ -60,7 +66,7 @@ jobs:
             echo "No changes detected. Skipping commit and push."
           else
             # 7. Changes ko commit karein
-            git commit -m "Sync from GitHub Action (GitHub SHA: ${{ github.sha }})"
+            git commit -m "Sync encrypted source from GitHub Action (GitHub SHA: ${{ github.sha }})"
             echo "Changes committed locally."
 
             # 8. Changes ko Hugging Face Hub par push karein
