@@ -223,42 +223,43 @@ class TgCall(PyTgCalls):
                     try:
                         client = await db.get_assistant(chat_id)
                         
-                        # CONNECTION CHECK (Every 30s / 3 iterations)
+                        # CONNECTION CHECK (Every 10s - runs every loop)
                         # Check if assistant is actually in the call
-                        if counter % 3 == 0:
-                            try:
-                                logger.info(f"Checking assistant connection in chat {chat_id}...")
-                                in_call = await self._is_assistant_in_vc(chat_id, client)
-                                if in_call:
-                                    logger.debug(f"✓ Assistant is in VC for chat {chat_id}")
-                                if not in_call:
-                                    logger.warning(f"⚠️ Assistant missing from VC in chat {chat_id}, forcing rejoin...")
-                                    # Force rejoin
-                                    try:
-                                        media = await queue.get_current(chat_id)
-                                        if media:
-                                            # Get Userbot client for resolution
-                                            ub = await userbot.get_client_by_name(client.name)
-                                            # Rejoin flow
-                                            try:
-                                                await client.leave_group_call(chat_id)
-                                            except:
-                                                pass
-                                            await asyncio.sleep(1)
-                                            
-                                            # Re-stream current media
-                                            stream = Media.get_audio_stream(media.file_path)
-                                            await client.join_group_call(
-                                                chat_id,
-                                                stream,
-                                                stream_type=types.StreamType().pulse_stream,
-                                            )
-                                            logger.info(f"✅ Successfully rejoined VC in chat {chat_id}")
-                                            continue # Skip unmute toggles this loop
-                                    except Exception as e:
-                                        logger.error(f"Failed to auto-rejoin VC in {chat_id}: {e}")
-                            except Exception as e:
-                                logger.error(f"Connection check failed for {chat_id}: {e}")
+                        try:
+                            logger.info(f"Checking assistant connection in chat {chat_id}...")
+                            in_call = await self._is_assistant_in_vc(chat_id, client)
+                            
+                            if in_call:
+                                logger.debug(f"✓ Assistant is in VC for chat {chat_id}")
+                            else:
+                                logger.warning(f"⚠️ Assistant missing from VC in chat {chat_id}, forcing rejoin...")
+                                # Force rejoin
+                                try:
+                                    media = await queue.get_current(chat_id)
+                                    if media:
+                                        # Rejoin flow
+                                        try:
+                                            await client.leave_group_call(chat_id)
+                                            await asyncio.sleep(2) # Wait a bit longer
+                                        except Exception as e:
+                                            logger.debug(f"Leave call failed (expected): {e}")
+
+                                        # Re-stream current media
+                                        stream = Media.get_audio_stream(media.file_path)
+                                        await client.join_group_call(
+                                            chat_id,
+                                            stream,
+                                            stream_type=types.StreamType().pulse_stream,
+                                        )
+                                        logger.info(f"✅ Successfully rejoined VC in chat {chat_id}")
+                                        
+                                        # Wait a bit to let connection stabilize
+                                        await asyncio.sleep(2)
+                                        continue # Skip unmute toggles this loop
+                                except Exception as e:
+                                    logger.error(f"Failed to auto-rejoin VC in {chat_id}: {e}")
+                        except Exception as e:
+                            logger.error(f"Connection check failed for {chat_id}: {e}")
 
                         # Only unmute/resume if actively playing (not paused)
                         # Double-check pause state before resuming
@@ -303,6 +304,7 @@ class TgCall(PyTgCalls):
                 full_chat = await ub.invoke(functions.messages.GetFullChat(chat_id=peer.chat_id))
             
             if not full_chat.full_chat.call:
+                logger.debug(f"Connection Check: No active call found in chat {chat_id}")
                 return False # No call exists
                 
             # Check participants
@@ -322,11 +324,15 @@ class TgCall(PyTgCalls):
                 if p.peer.user_id == my_id:
                     return True
             
+            logger.debug(f"Connection Check: Assistant {my_id} NOT found in participants list")
             return False
             
         except Exception as e:
-            logger.debug(f"Failed to check participant status in {chat_id}: {e}")
-            # Assume True on error to avoid unnecessary rejoin loops due to permission errors
+            logger.error(f"Failed to check participant status in {chat_id}: {e}")
+            # If we get a specific error like 'GROUPCALL_FORBIDDEN', return False effectively
+            if "GROUPCALL_FORBIDDEN" in str(e):
+                 return False
+            # Otherwise assume True to avoid loops
             return True
 
     def _cancel_unmute_keeper(self, chat_id: int) -> None:
