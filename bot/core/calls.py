@@ -294,7 +294,15 @@ class TgCall(PyTgCalls):
         """Check if assistant is physically present in the Telegram group call."""
         try:
             # Get Userbot client (Pyrogram)
-            ub = await userbot.get_client_by_name(client.name)
+            # Fix: db.get_assistant returns PyTgCalls object, which may not have .name
+            # Fetch name from DB cache which is populated by get_assistant
+            session_name = db.assistant.get(chat_id)
+            if not session_name:
+                # Should not happen if get_assistant was called, but safety fallback
+                logger.warning(f"Session name not found in cache for {chat_id}")
+                return True 
+                
+            ub = await userbot.get_client_by_name(session_name)
             
             # Resolve peer and find call
             peer = await ub.resolve_peer(chat_id)
