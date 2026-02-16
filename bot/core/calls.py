@@ -1171,6 +1171,14 @@ class TgCall(PyTgCalls):
                             # Add to active calls BEFORE playing to pass checks
                             await db.add_call(chat_id)
                             
+                            # Force leave call to clear zombie/ghost state
+                            try:
+                                client = await db.get_assistant(chat_id)
+                                await client.leave_call(chat_id)
+                                await asyncio.sleep(2)
+                            except:
+                                pass
+                            
                             # Need message object for UI updates. 
                             # We can't easily get the original message object, but play_media needs it to edit.
                             # We will try to fetch the message if message_id exists
