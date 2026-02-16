@@ -96,10 +96,5 @@ quotly - Create sticker quote from message
 q - Create sticker quote from message
 memify - Add text to sticker/image
 mmf - Add text to sticker/image
-guessimg - Guess the image game
-riddle - Guess the riddle game
-wordgame - Guess the word game
-riddlegame - Riddle game
-stopgame - Stop the current game
 ban - Ban a user from the chat
 unban - Unban a user from the chat

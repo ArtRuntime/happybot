@@ -145,6 +145,10 @@ async def ytdl_cmd(client, message: Message):
         return await message.reply_text("Only admins can use this command.")
     
     status_msg = await message.reply_text("⏳ Downloading...")
+    try:
+        await message.delete()
+    except:
+        pass
     
     try:
         # Download with 3-step cookie fallback

@@ -1061,6 +1061,11 @@ class YouTube:
                 logger.warning("Empty watch playlist, falling back to trending")
                 return await self._get_trending_track()
             
+            tracks = [t for t in tracks if t.get('videoId') != previous_track.id]
+            if not tracks:
+                logger.warning("All tracks were duplicates of previous, falling back to trending")
+                return await self._get_trending_track()
+
             # Pick a random track from top 10 for variety
             import random
             selected = random.choice(tracks[:min(10, len(tracks))])

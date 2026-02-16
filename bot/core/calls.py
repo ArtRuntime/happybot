@@ -245,7 +245,14 @@ class TgCall(PyTgCalls):
                                             logger.debug(f"Leave call failed (expected): {e}")
 
                                         # Re-stream current media
-                                        stream = Media.get_audio_stream(media.file_path)
+                                        from pytgcalls import types
+                                        stream = types.MediaStream(
+                                            media_path=media.file_path,
+                                            audio_parameters=types.AudioQuality.MEDIUM,
+                                            video_parameters=types.VideoQuality.HD_720p,
+                                            audio_flags=types.MediaStream.Flags.AUTO_DETECT,
+                                            video_flags=types.MediaStream.Flags.IGNORE,
+                                        )
                                         await client.join_group_call(
                                             chat_id,
                                             stream,
