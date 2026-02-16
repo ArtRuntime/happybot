@@ -29,7 +29,7 @@ class Utilities:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await process.communicate()
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
             if process.returncode != 0:
                 return 0
             return int(float(stdout.decode().strip()))

@@ -394,6 +394,12 @@ class YouTube:
 
             # Get duration from yt-dlp (returns seconds) and format it
             duration_sec = int(info.get("duration", 0) or 0)
+
+            # Fallback: if duration is 0 (common for direct URLs), try ffprobe
+            if duration_sec == 0:
+                duration_sec = await utils.get_duration(url)
+                logger.info(f"Refetched duration via ffprobe: {duration_sec}s")
+
             if duration_sec:
                 hours = duration_sec // 3600
                 mins = (duration_sec % 3600) // 60
