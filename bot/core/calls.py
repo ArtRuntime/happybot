@@ -26,6 +26,7 @@ class TgCall(PyTgCalls):
         self._play_next_locks: dict[int, asyncio.Lock] = {}
         self._watchdog_tasks: dict[int, asyncio.Task] = {}  # Watchdog for stuck streams
         self._unmute_keeper_tasks: dict[int, asyncio.Task] = {}  # Periodic unmute keeper
+        self._connection_cache: dict[int, float] = {}  # Cache for successful connection checks
 
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
@@ -141,6 +142,10 @@ class TgCall(PyTgCalls):
                 await client.leave_call(chat_id, close=False)
         except:
             pass
+        
+        # Clear connection cache
+        if chat_id in self._connection_cache:
+            del self._connection_cache[chat_id]
 
     # Track active preload tasks per chat
     _preload_tasks: dict[int, asyncio.Task] = {}
@@ -205,8 +210,8 @@ class TgCall(PyTgCalls):
             counter = 0
             try:
                 while True:
-                    # Wait 10 seconds between checks (more frequent to prevent aggressive auto-mute)
-                    await asyncio.sleep(10)
+                    # Wait 60 seconds between checks (Reduced frequency to prevent FloodWait)
+                    await asyncio.sleep(60)
                     counter += 1
                     
                     # Check if still actively playing
@@ -223,18 +228,23 @@ class TgCall(PyTgCalls):
                     try:
                         client = await db.get_assistant(chat_id)
                         
-                        # CONNECTION CHECK (Every 10s - runs every loop)
+                        # CONNECTION CHECK
                         # Check if assistant is actually in the call
                         try:
-                            logger.info(f"Checking assistant connection in chat {chat_id}...")
+                            # logger.info(f"Checking assistant connection in chat {chat_id}...")
                             in_call = await self._is_assistant_in_vc(chat_id, client)
                             
                             if in_call:
-                                logger.debug(f"✓ Assistant is in VC for chat {chat_id}")
+                                # logger.debug(f"✓ Assistant is in VC for chat {chat_id}")
+                                pass
                             else:
                                 logger.warning(f"⚠️ Assistant missing from VC in chat {chat_id}, forcing rejoin...")
                                 # Force rejoin
                                 try:
+                                    # Clear cache so next check is real
+                                    if chat_id in self._connection_cache:
+                                        del self._connection_cache[chat_id]
+                                        
                                     media = await queue.get_current(chat_id)
                                     if media:
                                         # Rejoin flow
@@ -278,11 +288,11 @@ class TgCall(PyTgCalls):
                                 await client.mute_stream(chat_id)
                                 await asyncio.sleep(0.5)
                                 await client.unmute_stream(chat_id)
-                                logger.debug(f"Unmute keeper: toggled mute/unmute for chat {chat_id}")
+                                # logger.debug(f"Unmute keeper: toggled mute/unmute for chat {chat_id}")
                             except AttributeError:
                                 # Fallback for older pytgcalls versions
                                 await client.resume(chat_id)
-                                logger.debug(f"Unmute keeper: called resume for chat {chat_id}")
+                                # logger.debug(f"Unmute keeper: called resume for chat {chat_id}")
                     except Exception as e:
                         logger.debug(f"Unmute keeper check failed for {chat_id}: {e}")
                         
@@ -299,6 +309,15 @@ class TgCall(PyTgCalls):
 
     async def _is_assistant_in_vc(self, chat_id: int, client) -> bool:
         """Check if assistant is physically present in the Telegram group call."""
+        import time
+        
+        # 1. Check Cache
+        if chat_id in self._connection_cache:
+            last_checked = self._connection_cache[chat_id]
+            # Valid for 5 minutes (300s)
+            if (time.time() - last_checked) < 300:
+                return True
+        
         try:
             # Get Userbot client (Pyrogram)
             # Fix: db.get_assistant returns PyTgCalls object, which may not have .name
@@ -337,15 +356,23 @@ class TgCall(PyTgCalls):
             my_id = ub.me.id
             for p in results.participants:
                 if p.peer.user_id == my_id:
+                    # Update Cache
+                    self._connection_cache[chat_id] = time.time()
                     return True
             
             logger.debug(f"Connection Check: Assistant {my_id} NOT found in participants list")
             return False
             
         except Exception as e:
+            err_str = str(e)
+            if "FLOOD_WAIT" in err_str:
+                logger.warning(f"FloodWait during connection check for {chat_id}: {e}")
+                # Assume True to avoid compounding the flood wait
+                return True
+            
             logger.error(f"Failed to check participant status in {chat_id}: {e}")
             # If we get a specific error like 'GROUPCALL_FORBIDDEN', return False effectively
-            if "GROUPCALL_FORBIDDEN" in str(e):
+            if "GROUPCALL_FORBIDDEN" in err_str:
                  return False
             # Otherwise assume True to avoid loops
             return True
