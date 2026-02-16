@@ -788,6 +788,13 @@ class TgCall(PyTgCalls):
         except RTMPStreamingUnsupported:
             await self.stop(chat_id)
             await message.edit_text(_lang["error_rtmp"])
+        except Exception as e:
+            logger.error(f"Play Media Error: {e}", exc_info=True)
+            try:
+                await message.edit_text(f"❌ Error: {e}")
+            except:
+                pass
+            await self.play_next(chat_id)
 
 
     async def change_stream(self, chat_id: int, audio_index: int) -> bool:
@@ -1025,6 +1032,7 @@ class TgCall(PyTgCalls):
             try:
                 client = await db.get_assistant(chat_id)
                 await client.leave_call(chat_id)
+                await asyncio.sleep(2)
             except:
                 pass
                 

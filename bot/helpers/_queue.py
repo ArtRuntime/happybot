@@ -75,6 +75,17 @@ class Queue:
         except:
             return None
 
+    async def set_loading(self, chat_id: int, status: bool) -> None:
+        """Set or clear the loading status for a chat."""
+        if status:
+            await self.rds.set(f"{self.prefix}loading:{chat_id}", "1", ex=60) # 60s hard expiry
+        else:
+            await self.rds.delete(f"{self.prefix}loading:{chat_id}")
+
+    async def is_loading(self, chat_id: int) -> bool:
+        """Check if a chat is currently loading a track."""
+        return bool(await self.rds.get(f"{self.prefix}loading:{chat_id}"))
+
     async def add(self, chat_id: int, item: MediaItem) -> int:
         """Add an item to the queue and return its position (1-based)."""
         json_item = self._to_json(item)
