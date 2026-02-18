@@ -5,6 +5,9 @@
 
 import json
 import redis.asyncio as redis
+from redis.asyncio.retry import Retry
+from redis.backoff import ExponentialBackoff
+from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 from dataclasses import asdict
 from typing import Union
 
@@ -16,8 +19,18 @@ MediaItem = Union[Media, Track]
 
 class Queue:
     def __init__(self):
-        # We assume config.REDIS_URL is available
-        self.rds = redis.from_url(config.REDIS_URL, decode_responses=True)
+        # Retry up to 3 times with exponential backoff on connection errors
+        _retry = Retry(ExponentialBackoff(cap=5, base=0.5), retries=3)
+        self.rds = redis.from_url(
+            config.REDIS_URL,
+            decode_responses=True,
+            retry=_retry,
+            retry_on_error=[RedisConnectionError, RedisTimeoutError, ConnectionResetError],
+            socket_keepalive=True,
+            socket_connect_timeout=5,
+            socket_timeout=10,
+            health_check_interval=30,
+        )
         self.prefix = config.REDIS_PREFIX
 
     @staticmethod
