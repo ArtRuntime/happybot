@@ -28,8 +28,6 @@ class TgCall(PyTgCalls):
         self._unmute_keeper_tasks: dict[int, asyncio.Task] = {}  # Periodic unmute keeper
         self._connection_cache: dict[int, float] = {}  # Cache for successful connection checks
         self._last_rejoin: dict[int, float] = {}  # Timestamp of last rejoin per chat (cooldown)
-        self._empty_vc_since: dict[int, float] = {}  # Timestamp when VC became empty (no listeners)
-        self._auto_paused: set = set()  # Chats that were auto-paused due to empty VC
 
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
@@ -200,101 +198,6 @@ class TgCall(PyTgCalls):
             except:
                 pass
 
-    async def _count_vc_listeners(self, chat_id: int) -> int:
-        """Count non-assistant listeners in the VC. Returns -1 on error."""
-        try:
-            session_name = db.assistant.get(chat_id)
-            if not session_name:
-                return -1
-            ub = await userbot.get_client_by_name(session_name)
-            my_id = ub.me.id
-
-            peer = await ub.resolve_peer(chat_id)
-            if hasattr(peer, 'channel_id'):
-                from pyrogram.raw import functions as raw_funcs
-                full_chat = await ub.invoke(raw_funcs.channels.GetFullChannel(channel=peer))
-            else:
-                from pyrogram.raw import functions as raw_funcs
-                full_chat = await ub.invoke(raw_funcs.messages.GetFullChat(chat_id=peer.chat_id))
-
-            if not full_chat.full_chat.call:
-                return 0
-
-            from pyrogram.raw import functions as raw_funcs
-            results = await ub.invoke(
-                raw_funcs.phone.GetGroupParticipants(
-                    call=full_chat.full_chat.call,
-                    ids=[], sources=[], offset="", limit=100
-                )
-            )
-            # Count participants that are NOT the assistant
-            listeners = [p for p in results.participants if p.peer.user_id != my_id]
-            return len(listeners)
-        except Exception as e:
-            logger.debug(f"_count_vc_listeners error for {chat_id}: {e}")
-            return -1
-
-    async def _handle_user_joined_vc(self, chat_id: int) -> None:
-        """Called when a non-assistant user joins the VC. Resume if auto-paused."""
-        if chat_id not in self._auto_paused:
-            return
-        # Quick in-memory check first — avoid DB round-trip before resuming
-        if not await db.get_call(chat_id):
-            return
-
-        logger.info(f"👤 User joined VC in chat {chat_id}, resuming auto-paused stream...")
-        self._auto_paused.discard(chat_id)
-        self._empty_vc_since.pop(chat_id, None)
-
-        try:
-            client = await db.get_assistant(chat_id)
-
-            # ── Resume IMMEDIATELY — don't wait for unmute or DB updates ──
-            await client.resume(chat_id)
-            logger.info(f"▶️ Auto-resumed stream in chat {chat_id}")
-
-            # ── Fire secondary tasks concurrently in background ──
-            async def _post_resume():
-                try:
-                    # Unmute (non-blocking, best-effort)
-                    try:
-                        await client.unmute_stream(chat_id)
-                    except Exception:
-                        pass
-                    # DB state update
-                    await db.playing(chat_id, paused=False)
-                    # Update player message UI
-                    media = await queue.get_current(chat_id)
-                    if media and media.message_id:
-                        autoplay_status = await db.get_autoplay(chat_id)
-                        audio_track_count = len(getattr(media, 'audio_streams', []) or [])
-                        new_caption = (
-                            f"▶️ <u><b>Stream Resumed</b></u>\n\n"
-                            f"<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n"
-                            f"<b>Duration:</b> {media.duration}\n"
-                            f"<b>Reason:</b> Listener joined VC"
-                        )
-                        keyboard = buttons.controls(
-                            chat_id,
-                            status=None,
-                            autoplay=autoplay_status,
-                            audio_tracks=audio_track_count,
-                        )
-                        await app.edit_message_caption(
-                            chat_id=chat_id,
-                            message_id=media.message_id,
-                            caption=new_caption,
-                            reply_markup=keyboard,
-                        )
-                except Exception as _e:
-                    logger.debug(f"Post-resume update failed for {chat_id}: {_e}")
-
-            asyncio.create_task(_post_resume())
-
-        except Exception as e:
-            logger.error(f"Failed to auto-resume in {chat_id}: {e}")
-
-
 
     async def _start_unmute_keeper(self, chat_id: int) -> None:
         """Start a periodic unmute keeper to prevent auto-mute during long sessions."""
@@ -317,99 +220,14 @@ class TgCall(PyTgCalls):
                     if not await db.get_call(chat_id):
                         break  # Not in call anymore, stop keeper
                     
-                    # Check if paused - use the db.playing() method for accurate state
+                    # Check if paused - skip unmute/connection checks while paused
                     is_playing = await db.playing(chat_id)
                     if not is_playing:
-                        # If auto-paused by us, check for listeners now (fast fallback path)
-                        # The PyTgCalls participant event can be slow, so we poll here too
-                        if chat_id in self._auto_paused:
-                            listener_count = await self._count_vc_listeners(chat_id)
-                            if listener_count and listener_count > 0:
-                                logger.info(f"👥 unmute_keeper detected listener in auto-paused chat {chat_id}, resuming...")
-                                asyncio.create_task(self._handle_user_joined_vc(chat_id))
-                        # Stream is paused (manually or auto), don't do unmute/connection checks
                         logger.debug(f"Unmute keeper: chat {chat_id} is paused, skipping")
                         continue
-                    
+
                     try:
                         client = await db.get_assistant(chat_id)
-
-                        # ── AUTO-PAUSE: check if VC is empty ──────────────────────────
-                        # Only auto-pause when auto_leave is DISABLED (infinite play mode).
-                        # When auto_leave is enabled, the bot already leaves on empty VC.
-                        auto_leave_on = await db.get_auto_leave_enabled(chat_id)
-                        if not auto_leave_on:
-                            import time as _t
-                            listener_count = await self._count_vc_listeners(chat_id)
-                            if listener_count == 0:
-                                # VC is empty (only assistant or no one) alex
-                                if chat_id not in self._empty_vc_since:
-                                    self._empty_vc_since[chat_id] = _t.time()
-                                    timer = config.AUTO_PAUSE_TIMEOUT
-                                    logger.info(f"🔇 VC empty in chat {chat_id}, starting {timer}s pause timer...")
-                                elif _t.time() - self._empty_vc_since[chat_id] >= timer:
-                                     # 30 seconds elapsed → auto-pause
-                                     if chat_id not in self._auto_paused:
-                                        logger.info(f"⏸️ Auto-pausing chat {chat_id} (empty VC for {timer}s)")
-                                        self._auto_paused.add(chat_id)
-                                        try:
-                                            await client.mute_stream(chat_id)
-                                        except Exception:
-                                            pass
-                                        await client.pause(chat_id)
-                                        await db.playing(chat_id, paused=True)
-                                        # Update player message to show paused state
-                                        try:
-                                            media = await queue.get_current(chat_id)
-                                            if media and media.message_id:
-                                                autoplay_status = await db.get_autoplay(chat_id)
-                                                audio_track_count = len(getattr(media, 'audio_streams', []) or [])
-                                                new_caption = (
-                                                    f"⏸️ <u><b>Stream Paused</b></u>\n\n"
-                                                    f"<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n"
-                                                    f"<b>Duration:</b> {media.duration}\n"
-                                                    f"<b>Reason:</b> No listeners in VC"
-                                                )
-                                                keyboard = buttons.controls(
-                                                    chat_id,
-                                                    status="paused",
-                                                    autoplay=autoplay_status,
-                                                    audio_tracks=audio_track_count,
-                                                )
-                                                await app.edit_message_caption(
-                                                    chat_id=chat_id,
-                                                    message_id=media.message_id,
-                                                    caption=new_caption,
-                                                    reply_markup=keyboard,
-                                                )
-                                        except Exception as _e:
-                                            logger.debug(f"Failed to update player on auto-pause: {_e}")
-                                        # ── Fast-poll: check every 3s for a listener joining ──
-                                        # PyTgCalls participant events can be slow; this ensures
-                                        # near-instant resume when someone joins the VC.
-                                        async def _fast_listener_poll(_cid=chat_id):
-                                            while _cid in self._auto_paused:
-                                                await asyncio.sleep(3)
-                                                if _cid not in self._auto_paused:
-                                                    break
-                                                count = await self._count_vc_listeners(_cid)
-                                                if count and count > 0:
-                                                    logger.info(f"🔔 Fast-poll: listener detected in {_cid}, resuming...")
-                                                    await self._handle_user_joined_vc(_cid)
-                                                    break
-                                        asyncio.create_task(_fast_listener_poll())
-                                     continue  # Don't do unmute toggles while paused
-
-                            else:
-                                # VC has listeners — clear empty timer
-                                if chat_id in self._empty_vc_since:
-                                    self._empty_vc_since.pop(chat_id, None)
-                                    logger.debug(f"👥 VC has {listener_count} listener(s) in chat {chat_id}")
-                        # ─────────────────────────────────────────────────────────────
-
-                        # Skip unmute/connection checks while auto-paused
-                        if chat_id in self._auto_paused:
-                            continue
 
                         # CONNECTION CHECK
                         # Check if assistant is actually in the call
@@ -1295,33 +1113,6 @@ class TgCall(PyTgCalls):
             if isinstance(update, types.StreamEnded):
                 if update.stream_type == types.StreamEnded.Type.AUDIO:
                     await self.play_next(update.chat_id)
-            elif isinstance(update, types.UpdatedGroupCallParticipant):
-                chat_id = update.chat_id
-                participant = update.participant
-                action = update.action
-                # Get assistant ID to distinguish it from real listeners
-                try:
-                    session_name = db.assistant.get(chat_id)
-                    if session_name:
-                        ub = await userbot.get_client_by_name(session_name)
-                        my_id = ub.me.id
-                        is_assistant = (participant.user_id == my_id)
-                    else:
-                        is_assistant = False
-                except Exception:
-                    is_assistant = False
-
-                if not is_assistant:
-                    if action == types.GroupCallParticipant.Action.JOINED:
-                        # A real user joined — resume if auto-paused
-                        asyncio.create_task(self._handle_user_joined_vc(chat_id))
-                    elif action in (types.GroupCallParticipant.Action.LEFT,
-                                    types.GroupCallParticipant.Action.KICKED):
-                        # A real user left — start empty-VC timer if no one else
-                        if chat_id not in self._empty_vc_since:
-                            import time as _t
-                            self._empty_vc_since[chat_id] = _t.time()
-                            logger.debug(f"👤 User left VC in chat {chat_id}, starting empty timer")
             elif isinstance(update, types.ChatUpdate):
                 if update.status in [
                     types.ChatUpdate.Status.KICKED,

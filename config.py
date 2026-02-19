@@ -41,7 +41,6 @@ class Config:
         self.PING_IMG = getenv("PING_IMG", "https://images6.alphacoders.com/134/thumb-1920-1345576.jpeg")
         self.START_IMG = getenv("START_IMG", "https://images3.alphacoders.com/132/thumbbig-1323165.webp")
         self.AFK_TIMEOUT = int(getenv("AFK_TIMEOUT", 5)) * 60  # Default 5 minutes
-        self.AUTO_PAUSE_TIMEOUT = int(getenv("AUTO_PAUSE_TIMEOUT", 30))  # Seconds before auto-pause on empty VC
         
         # Direct Streaming (stream from URL without downloading)
         self.ENABLE_DIRECT_STREAMING = getenv("ENABLE_DIRECT_STREAMING", "true").lower() in ("true", "1", "yes")
