@@ -53,6 +53,9 @@ async def play_hndlr(
     if not await join_assistant(m, m.chat.id):
         return
         
+    # Track queue position for this request; treat forced plays as position 0 (now playing)
+    position = None
+
     async with _play_locks[m.chat.id]:
         file = None
         mention = m.from_user.mention
@@ -141,8 +144,13 @@ async def play_hndlr(
 
         file.user = mention
         file.source = 'user'  # Mark as user-requested for recommendation training
+
         if force:
+            # Force this track as the current one
             await queue.force_add(m.chat.id, file)
+            position = 0
+            # Mark queue as loading since we're about to start playback
+            await queue.set_loading(m.chat.id, True)
         else:
             position = await queue.add(m.chat.id, file)
 
@@ -227,5 +235,6 @@ async def play_hndlr(
             text=m.lang["playlist_queued"].format(len(tracks)) + added,
         )
     finally:
+        # Only clear loading flag if we actually marked this request as "now playing"
         if position == 0:
             await queue.set_loading(m.chat.id, False)

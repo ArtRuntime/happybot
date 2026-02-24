@@ -229,7 +229,14 @@ class YouTube:
                 video=video,
             )
         except Exception as e:
-            logger.error(f"py-yt-search failed: {e}", exc_info=True)
+            # youtube-search-python sometimes throws a TypeError when channel.id is None:
+            # "can only concatenate str (not 'NoneType') to str". Treat it as a soft failure
+            # and avoid spamming full tracebacks in logs.
+            msg = str(e)
+            if isinstance(e, TypeError) and "can only concatenate str (not \"NoneType\") to str" in msg:
+                logger.warning("py-yt-search hit known channel.id None bug; skipping to fallback.")
+            else:
+                logger.error(f"py-yt-search failed: {e}", exc_info=True)
             
             # Fallback 1: YouTube Music (ytmusicapi)
             logger.info(f"Falling back to ytmusicapi for: {query}")
