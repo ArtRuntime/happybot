@@ -34,7 +34,7 @@ jobs:
       - name: Sync to Hugging Face Hub
         env:
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
-          HF_USERNAME: a${{ secrets.HUGGINGFACE_USERNAME }}
+          HF_USERNAME: ${{ secrets.HUGGINGFACE_USERNAME }}
           HF_REPO_TYPE: spaces #'models' ya 'spaces'
           HF_REPO_NAME: ${{ secrets.HUGGINGFACE_REPO_NAME }} 
           TARGET_DIR: hf-repo-clone
