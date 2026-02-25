@@ -181,10 +181,9 @@ class YouTube:
             return None
         
         try:
-            # Configure Proxy for youtube-search-python (httpx backend)
-            if config.PROXY_URL:
-                os.environ["HTTP_PROXY"] = config.PROXY_URL
-                os.environ["HTTPS_PROXY"] = config.PROXY_URL
+            # We previously globally set HTTP_PROXY here, which caused SSL EOF errors with httpx 
+            # and broke ytmusicapi/yt-dlp. yt-dlp configures its proxy internally via ydl_opts["proxy"]
+            # instead of global env vars, which is much safer.
             
             # Search using youtube-search-python
             search = VideosSearch(query, limit=1)

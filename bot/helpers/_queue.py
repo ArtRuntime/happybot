@@ -135,24 +135,31 @@ class Queue:
         self, chat_id: int, item: MediaItem, remove: int | bool = False
     ) -> None:
         """Replace the currently playing item with a new one."""
-        # 1. Clear current
-        # 2. Add new item to LEFT of queue (or set as current)
-        # Legacy: rotate to remove `remove` items
-        
         json_item = self._to_json(item)
         
         # Set as current
         await self.rds.set(f"{self.prefix}current:{chat_id}", json_item)
         
-        if remove:
-            # Pop `remove` items from LEFT
-             for _ in range(int(remove)):
-                 await self.rds.lpop(f"{self.prefix}queue:{chat_id}")
-                 
-        # Actually force_play usually means stop current, play this.
-        # We set `current`. Queue remains. 
-        # If we want to simulate `appendleft`, we LPUSH.
-        await self.rds.lpush(f"{self.prefix}queue:{chat_id}", json_item)
+        if remove is not False:
+            # We must remove the item at index `remove` from the queue
+            # Because we clicked Play Now from the queued list.
+            # Redis doesn't have a direct "remove by index" for lists,
+            # so we fetch all, remove by index, and push back, or use LREM if we know the value.
+            # For simplicity, we can fetch the list, pop the index, and rewrite it.
+            items = await self.rds.lrange(f"{self.prefix}queue:{chat_id}", 0, -1)
+            if items and int(remove) - 1 < len(items):
+                # The position provided from UI is 1-based usually, or it's the index in get_queue()
+                # If `remove` is from get_queue(), current is index 0, so queue item is remove - 1
+                try:
+                    items.pop(int(remove) - 1)
+                    await self.rds.delete(f"{self.prefix}queue:{chat_id}")
+                    for current_item in items:
+                        await self.rds.rpush(f"{self.prefix}queue:{chat_id}", current_item)
+                except IndexError:
+                    pass
+        
+        # NOTE: We DO NOT lpush to the queue here if it's currently playing,
+        # because current is separate from the queue list in this architecture.
 
     async def insert_front(self, chat_id: int, item: MediaItem) -> None:
         """Insert an item to the front of the queue (play next)."""

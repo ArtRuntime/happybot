@@ -91,7 +91,7 @@ class Inline:
             # Group utility features
             group_cbs = ["federation", "locks", "filters", "admin", "afk", "sangmata", "autoforward"]
             # Fun & tools
-            fun_cbs = ["games", "memes", "extras", "ytdl", "quotly", "stickers"]
+            fun_cbs = ["memes", "extras", "ytdl", "quotly", "stickers"]
             
             all_cbs = music_cbs + group_cbs + fun_cbs
             buttons = [
