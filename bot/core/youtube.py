@@ -181,13 +181,19 @@ class YouTube:
             return None
         
         try:
-            # We previously globally set HTTP_PROXY here, which caused SSL EOF errors with httpx 
-            # and broke ytmusicapi/yt-dlp. yt-dlp configures its proxy internally via ydl_opts["proxy"]
-            # instead of global env vars, which is much safer.
-            
+            # Set proxy env locally for httpx
+            if config.PROXY_URL:
+                os.environ['HTTP_PROXY'] = config.PROXY_URL
+                os.environ['HTTPS_PROXY'] = config.PROXY_URL
+
             # Search using youtube-search-python
             search = VideosSearch(query, limit=1)
             results = await search.next()
+            
+            # Clean up immediately
+            if config.PROXY_URL:
+                os.environ.pop('HTTP_PROXY', None)
+                os.environ.pop('HTTPS_PROXY', None)
             
             if not results or not results.get('result'):
                 logger.warning("No playable result found in search")
@@ -241,6 +247,16 @@ class YouTube:
             logger.info(f"Falling back to ytmusicapi for: {query}")
             try:
                 if self.ytmusic:
+                    # Inject proxy to ytmusicapi session
+                    if config.PROXY_URL:
+                        if not hasattr(self.ytmusic, '_session') or not self.ytmusic._session:
+                            import requests
+                            self.ytmusic._session = requests.Session()
+                        self.ytmusic._session.proxies.update({
+                            "http": config.PROXY_URL,
+                            "https": config.PROXY_URL
+                        })
+                        
                     results = await asyncio.to_thread(
                         self.ytmusic.search, query, filter="songs", limit=1
                     )

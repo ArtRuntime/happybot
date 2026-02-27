@@ -4,8 +4,9 @@
 
 
 import pyrogram
-
+import logging
 from bot import config, logger
+from bot.core.log_handler import TelegramLogHandler
 
 
 class Bot(pyrogram.Client):
@@ -24,6 +25,12 @@ class Bot(pyrogram.Client):
         self.logger = config.LOGGER_ID
         self.bl_users = pyrogram.filters.user()
         self.sudoers = pyrogram.filters.user(self.owner)
+        
+        # Initialize Telegram Log Handler
+        self.telegram_log_handler = TelegramLogHandler(self)
+        self.telegram_log_handler.setLevel(logging.WARNING)
+        # Attach it to the root logger
+        logging.getLogger().addHandler(self.telegram_log_handler)
 
     async def boot(self):
         """
@@ -37,6 +44,9 @@ class Bot(pyrogram.Client):
         self.name = self.me.first_name
         self.username = self.me.username
         self.mention = self.me.mention
+        
+        # Start processing log queue
+        self.telegram_log_handler.start_worker()
 
         try:
             await self.send_message(self.logger, "Bot Started")
@@ -52,5 +62,7 @@ class Bot(pyrogram.Client):
         """
         Asynchronously stops the bot.
         """
+        # Stop processing log queue
+        await self.telegram_log_handler.stop_worker()
         await super().stop()
         logger.info("Bot stopped.")
