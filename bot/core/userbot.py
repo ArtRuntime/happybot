@@ -223,7 +223,11 @@ class Userbot(Client):
                 logger.info(f"✓ Assistant '{client.name}' joined logs group")
                 await asyncio.sleep(1)
             except Exception as e:
-                logger.error(f"✗ Failed to invite '{client.name}': {e}")
+                err_str = str(e)
+                if "USER_ALREADY_PARTICIPANT" in err_str:
+                    logger.debug(f"✓ Assistant '{client.name}' is already a participant.")
+                else:
+                    logger.error(f"✗ Failed to invite '{client.name}': {e}")
         
         # Only promote if not already an admin
         if not is_admin:
@@ -259,6 +263,8 @@ class Userbot(Client):
                      logger.info(f"✓ Assistant '{client.name}' is the CREATOR of logs group (already admin)")
                 elif "CHANNELS_ADMIN_PUBLIC_TOO_MUCH" in err_str:
                      logger.error(f"✗ Failed to promote '{client.name}': Too many public admins")
+                elif "PEER_ID_INVALID" in err_str:
+                     logger.warning(f"⚠️ Cannot promote '{client.name}' yet (Telegram hasn't fully registered the join). Will retry later naturally.")
                 else:
                     logger.error(f"✗ Failed to promote '{client.name}': {e}")
         

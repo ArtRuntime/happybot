@@ -1008,6 +1008,17 @@ class YouTube:
             # 1. Handle Genre/Custom Mode (e.g. "Pop", "Rock", "Lofi")
             if isinstance(mode, str) and mode.lower() not in ("smart", "on", "true", "True"):
                 logger.info(f"Genre Autoplay: {mode}")
+                
+                # Setup session proxy dynamically
+                if config.PROXY_URL:
+                    if not hasattr(self.ytmusic, '_session') or not self.ytmusic._session:
+                        import requests
+                        self.ytmusic._session = requests.Session()
+                    self.ytmusic._session.proxies.update({
+                        "http": config.PROXY_URL,
+                        "https": config.PROXY_URL
+                    })
+                
                 # Search for genre-based songs
                 results = await asyncio.to_thread(
                     self.ytmusic.search,
@@ -1078,6 +1089,16 @@ class YouTube:
             
             # Use ytmusicapi's watch playlist (radio feature)
             logger.info(f"Getting autoplay recommendations for: {previous_track.title}")
+            
+            # Setup session proxy dynamically
+            if config.PROXY_URL:
+                if not hasattr(self.ytmusic, '_session') or not self.ytmusic._session:
+                    import requests
+                    self.ytmusic._session = requests.Session()
+                self.ytmusic._session.proxies.update({
+                    "http": config.PROXY_URL,
+                    "https": config.PROXY_URL
+                })
             
             watch_data = await asyncio.to_thread(
                 self.ytmusic.get_watch_playlist,
@@ -1191,6 +1212,16 @@ class YouTube:
             return None
         
         try:
+            # Setup session proxy dynamically
+            if config.PROXY_URL:
+                if not hasattr(self.ytmusic, '_session') or not self.ytmusic._session:
+                    import requests
+                    self.ytmusic._session = requests.Session()
+                self.ytmusic._session.proxies.update({
+                    "http": config.PROXY_URL,
+                    "https": config.PROXY_URL
+                })
+                
             charts = await asyncio.to_thread(
                 self.ytmusic.get_charts,
                 country='ZZ'  # Global charts
