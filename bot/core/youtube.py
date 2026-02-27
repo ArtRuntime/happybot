@@ -347,8 +347,9 @@ class YouTube:
                 try:
                     info = await asyncio.to_thread(ydl.extract_info, url, download=False)
                 except Exception as ex:
-                    # Retry with fallback cookie if Sign in error
-                    if "Sign in to confirm" in str(ex):
+                    # Retry with fallback cookie if Sign in error or SSL handshake drop
+                    err_str = str(ex)
+                    if "Sign in to confirm" in err_str or "UNEXPECTED_EOF" in err_str or "SSL" in err_str:
                         fallback = self._get_fallback_cookie()
                         if fallback:
                             logger.warning("_generic_search: Primary cookie failed. Retrying with fallback...")
@@ -358,7 +359,8 @@ class YouTube:
                                     info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
                                     logger.info("✅ Fallback cookie success (search)!")
                             except Exception as ex2:
-                                if "Sign in to confirm" in str(ex2):
+                                err_str2 = str(ex2)
+                                if "Sign in to confirm" in err_str2 or "UNEXPECTED_EOF" in err_str2 or "SSL" in err_str2:
                                     logger.warning("_generic_search: Fallback cookie failed. Retrying cookie-less (Android + Proxy)...")
                                     # Cookie-less Fallback
                                     ydl_opts.pop("cookiefile", None)
@@ -558,8 +560,9 @@ class YouTube:
                 try:
                     info = await asyncio.to_thread(ydl.extract_info, url, download=False)
                 except Exception as ex:
-                    # Retry with fallback cookie if Sign in error
-                    if "Sign in to confirm" in str(ex):
+                    # Retry with fallback cookie if Sign in error or SSL drop
+                    err_str = str(ex)
+                    if "Sign in to confirm" in err_str or "UNEXPECTED_EOF" in err_str or "SSL" in err_str:
                         fallback = self._get_fallback_cookie()
                         if fallback:
                             logger.warning("_generic_playlist: Primary cookie failed. Retrying with fallback...")
@@ -569,7 +572,8 @@ class YouTube:
                                     info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
                                     logger.info("✅ Fallback cookie success (playlist)!")
                             except Exception as ex2:
-                                if "Sign in to confirm" in str(ex2):
+                                err_str2 = str(ex2)
+                                if "Sign in to confirm" in err_str2 or "UNEXPECTED_EOF" in err_str2 or "SSL" in err_str2:
                                     logger.warning("_generic_playlist: Fallback cookie failed. Retrying cookie-less (Android + Proxy)...")
                                     ydl_opts.pop("cookiefile", None)
                                     ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
@@ -734,12 +738,13 @@ class YouTube:
                             
                     return downloaded_path
                 except Exception as ex:
-                    # Check for Sign in error and retry with fallback
-                    if "Sign in to confirm" in str(ex):
+                    # Check for Sign in or SSL drop error and retry with fallback
+                    err_str = str(ex)
+                    if "Sign in to confirm" in err_str or "UNEXPECTED_EOF" in err_str or "SSL" in err_str:
                         fallback = self._get_fallback_cookie()
                         
                         if fallback:
-                            logger.warning("Primary cookie failed with Sign-in error. Retrying with fallback cookie...")
+                            logger.warning("Primary cookie failed with Sign-in/SSL error. Retrying with fallback cookie...")
                             ydl_opts["cookiefile"] = fallback
                             try:
                                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -752,7 +757,8 @@ class YouTube:
                                         return f"downloads/{file}"
                             except Exception as ex2:
                                 logger.error(f"Fallback cookie also failed: {ex2}")
-                                if "Sign in to confirm" not in str(ex2):
+                                err_str2 = str(ex2)
+                                if "Sign in to confirm" not in err_str2 and "UNEXPECTED_EOF" not in err_str2 and "SSL" not in err_str2:
                                     return None
                         
                         # Cookie-less Fallback (Third Layer)
