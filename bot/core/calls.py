@@ -820,7 +820,13 @@ class TgCall(PyTgCalls):
             
             # 3. Retry Logic
             self._consecutive_failures[chat_id] += 1
-            await message.edit_text("🔄 File corrupted, re-fetching...")
+            from pyrogram.errors import MessageNotModified
+            try:
+                await message.edit_text("🔄 File corrupted, re-fetching...")
+            except MessageNotModified:
+                pass
+            except Exception as e:
+                logger.debug(f"Could not edit message for re-fetch: {e}")
             
             try:
                 # Re-fetch media (Stream OR Download)

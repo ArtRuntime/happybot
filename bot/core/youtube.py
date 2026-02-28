@@ -36,6 +36,27 @@ _cancelled_downloads: set[int] = set()
 class YouTube:
     StorageLowError = StorageLowError # Expose exception class 
 
+    class YtDlpLogger:
+        def debug(self, msg):
+            from bot import config, logger
+            if config.YTDLP_VERBOSE and not msg.startswith('[debug] '):
+                logger.info(f"yt-dlp: {msg}")
+        def info(self, msg):
+            from bot import config, logger
+            if config.YTDLP_VERBOSE:
+                logger.info(f"yt-dlp: {msg}")
+        def warning(self, msg):
+            from bot import logger
+            logger.warning(f"yt-dlp: {msg}")
+        def error(self, msg):
+            from bot import logger
+            logger.error(f"yt-dlp: {msg}")
+
+    def _YoutubeDL(self, params: dict):
+        if "logger" not in params:
+            params["logger"] = self.YtDlpLogger()
+        return self._YoutubeDL(params)
+
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
         self.cookies = []
@@ -307,7 +328,7 @@ class YouTube:
                 if cookie: ydl_opts["cookiefile"] = cookie
                 if config.PROXY_URL: ydl_opts["proxy"] = config.PROXY_URL
                 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                with self._YoutubeDL(ydl_opts) as ydl:
                     # ytsearch1: returns 1 result
                     info = await asyncio.to_thread(ydl.extract_info, f"ytsearch1:{query}", download=False)
                     
@@ -343,7 +364,7 @@ class YouTube:
             ydl_opts["cookiefile"] = cookie
             
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            with self._YoutubeDL(ydl_opts) as ydl:
                 try:
                     info = await asyncio.to_thread(ydl.extract_info, url, download=False)
                 except Exception as ex:
@@ -355,7 +376,7 @@ class YouTube:
                             logger.warning("_generic_search: Primary cookie failed. Retrying with fallback...")
                             ydl_opts["cookiefile"] = fallback
                             try:
-                                with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
+                                with self._YoutubeDL(ydl_opts) as ydl_fallback:
                                     info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
                                     logger.info("✅ Fallback cookie success (search)!")
                             except Exception as ex2:
@@ -368,7 +389,7 @@ class YouTube:
                                     if config.PROXY_URL:
                                         ydl_opts["proxy"] = config.PROXY_URL
                                     
-                                    with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                                    with self._YoutubeDL(ydl_opts) as ydl_less:
                                         info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
                                         logger.info("✅ Cookie-less fallback success (search)!")
                                 else:
@@ -381,7 +402,7 @@ class YouTube:
                             if config.PROXY_URL:
                                 ydl_opts["proxy"] = config.PROXY_URL
                             
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                            with self._YoutubeDL(ydl_opts) as ydl_less:
                                 info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
                                 logger.info("✅ Cookie-less fallback success (search)!")
                     else:
@@ -556,7 +577,7 @@ class YouTube:
             ydl_opts["cookiefile"] = cookie
             
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            with self._YoutubeDL(ydl_opts) as ydl:
                 try:
                     info = await asyncio.to_thread(ydl.extract_info, url, download=False)
                 except Exception as ex:
@@ -568,7 +589,7 @@ class YouTube:
                             logger.warning("_generic_playlist: Primary cookie failed. Retrying with fallback...")
                             ydl_opts["cookiefile"] = fallback
                             try:
-                                with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
+                                with self._YoutubeDL(ydl_opts) as ydl_fallback:
                                     info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
                                     logger.info("✅ Fallback cookie success (playlist)!")
                             except Exception as ex2:
@@ -580,7 +601,7 @@ class YouTube:
                                     if config.PROXY_URL:
                                         ydl_opts["proxy"] = config.PROXY_URL
                                     
-                                    with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                                    with self._YoutubeDL(ydl_opts) as ydl_less:
                                         info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
                                         logger.info("✅ Cookie-less fallback success (playlist)!")
                                 else:
@@ -592,7 +613,7 @@ class YouTube:
                             if config.PROXY_URL:
                                 ydl_opts["proxy"] = config.PROXY_URL
                             
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                            with self._YoutubeDL(ydl_opts) as ydl_less:
                                 info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
                                 logger.info("✅ Cookie-less fallback success (playlist)!")
                     else:
@@ -706,7 +727,7 @@ class YouTube:
                 free_space = disk_usage.free
                 
                 # Get expected file size first and check if it fits
-                with yt_dlp.YoutubeDL({"quiet": True, "geo_bypass": True, "nocheckcertificate": True}) as ydl_info:
+                with self._YoutubeDL({"quiet": True, "geo_bypass": True, "nocheckcertificate": True}) as ydl_info:
                     try:
                         info = ydl_info.extract_info(url, download=False)
                         filesize = info.get("filesize") or info.get("filesize_approx") or 0
@@ -727,7 +748,7 @@ class YouTube:
                 # Try primary download
                 downloaded_path = None
                 try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    with self._YoutubeDL(ydl_opts) as ydl:
                         ydl.download([url])
                         
                     # Find the downloaded file
@@ -747,7 +768,7 @@ class YouTube:
                             logger.warning("Primary cookie failed with Sign-in/SSL error. Retrying with fallback cookie...")
                             ydl_opts["cookiefile"] = fallback
                             try:
-                                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                with self._YoutubeDL(ydl_opts) as ydl:
                                     ydl.download([url])
                                 logger.info("✅ Fallback cookie success!")
                                 
@@ -769,7 +790,7 @@ class YouTube:
                             ydl_opts["proxy"] = config.PROXY_URL
                             
                         try:
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            with self._YoutubeDL(ydl_opts) as ydl:
                                 ydl.download([url])
                             logger.info("✅ Cookie-less fallback success!")
                             # Find file
@@ -899,7 +920,7 @@ class YouTube:
         try:
             logger.info(f"Extracting stream URL for {url}")
             
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            with self._YoutubeDL(ydl_opts) as ydl:
                 # Extract info without downloading
                 try:
                     info = await asyncio.to_thread(ydl.extract_info, url, download=False)
@@ -911,7 +932,7 @@ class YouTube:
                             logger.warning("get_stream_url: Primary cookie failed. Retrying with fallback...")
                             ydl_opts["cookiefile"] = fallback
                             try:
-                                with yt_dlp.YoutubeDL(ydl_opts) as ydl_fallback:
+                                with self._YoutubeDL(ydl_opts) as ydl_fallback:
                                     info = await asyncio.to_thread(ydl_fallback.extract_info, url, download=False)
                                     logger.info("✅ Fallback cookie success (stream)!")
                             except Exception as ex2:
@@ -922,7 +943,7 @@ class YouTube:
                                     if config.PROXY_URL:
                                         ydl_opts["proxy"] = config.PROXY_URL
                                     
-                                    with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                                    with self._YoutubeDL(ydl_opts) as ydl_less:
                                         info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
                                         logger.info("✅ Cookie-less fallback success (stream)!")
                                 else:
@@ -934,7 +955,7 @@ class YouTube:
                             if config.PROXY_URL:
                                 ydl_opts["proxy"] = config.PROXY_URL
                             
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl_less:
+                            with self._YoutubeDL(ydl_opts) as ydl_less:
                                 info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
                                 logger.info("✅ Cookie-less fallback success (stream)!")
                     else:
@@ -1171,7 +1192,7 @@ class YouTube:
                 try:
                     ydl_opts = {"quiet": True, "no_warnings": True}
                     video_url = f"https://www.youtube.com/watch?v={video_id}"
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    with self._YoutubeDL(ydl_opts) as ydl:
                         info = await asyncio.to_thread(ydl.extract_info, video_url, download=False)
                         if info and info.get("duration"):
                             duration_sec = info.get("duration")
