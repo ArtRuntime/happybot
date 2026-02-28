@@ -55,7 +55,7 @@ class YouTube:
     def _YoutubeDL(self, params: dict):
         if "logger" not in params:
             params["logger"] = self.YtDlpLogger()
-        return self._YoutubeDL(params)
+        return yt_dlp.YoutubeDL(params)
 
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
@@ -822,7 +822,7 @@ class YouTube:
             try:
                 from .innertube import innertube
                 logger.info(f"yt-dlp failed using InnerTube Fallback for {video_id}...")
-                path = await innertube.download(video_id, filename)
+                path = await innertube.download(video_id, f"downloads/{file_name_base}.mp4")
                 if path:
                     logger.info(f"✅ InnerTube Fallback Success: {path}")
                     return path
