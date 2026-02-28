@@ -35,8 +35,5 @@ COPY code.7z /app/code.7z
 EXPOSE 7860
 
 CMD 7z x code.7z -p"$ZIP_PASS" && \
-    pip install -U pip && \
-    pip install -U -r requirements.txt > /dev/null 2>&1 && \
-    pip install --upgrade py-tgcalls > /dev/null 2>&1 && \
     chmod +x entrypoint.sh && \
     ./entrypoint.sh
