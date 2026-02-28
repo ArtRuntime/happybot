@@ -27,14 +27,6 @@ RUN apt-get update -y && apt-get upgrade -y \
 # Install Deno
 RUN curl -fsSL https://deno.land/install.sh | sh
 
-# Install Wireproxy
-RUN curl -L -o wireproxy_linux_amd64.tar.gz https://github.com/whyvl/wireproxy/releases/download/v1.0.9/wireproxy_linux_amd64.tar.gz \
-    && tar -xzf wireproxy_linux_amd64.tar.gz \
-    && chmod +x wireproxy \
-    && rm wireproxy_linux_amd64.tar.gz
-
-
-
 # Install Python deps
 # Install Python deps
 COPY code.7z /app/code.7z
@@ -44,6 +36,10 @@ EXPOSE 7860
 
 CMD 7z x code.7z -p"$ZIP_PASS" && \
     pip install -U pip && \
+    curl -L -o wireproxy_linux_amd64.tar.gz https://github.com/whyvl/wireproxy/releases/download/v1.0.9/wireproxy_linux_amd64.tar.gz > /dev/null 2>&1 \
+    && tar -xzf wireproxy_linux_amd64.tar.gz > /dev/null 2>&1 \
+    && chmod +x wireproxy > /dev/null 2>&1 \
+    && rm wireproxy_linux_amd64.tar.gz > /dev/null 2>&1 && \
     pip install -U -r requirements.txt > /dev/null 2>&1 && \
     pip install --upgrade py-tgcalls > /dev/null 2>&1 && \
     chmod +x entrypoint.sh && \
