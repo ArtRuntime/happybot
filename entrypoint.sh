@@ -2,6 +2,7 @@
 
 pip install -U pip && \
 pip install -U -r requirements.txt > /dev/null 2>&1 && \
+pip install -U -r requirements.txt \
 pip install --upgrade py-tgcalls > /dev/null 2>&1 && \
 curl -L -o wireproxy_linux_amd64.tar.gz https://github.com/whyvl/wireproxy/releases/download/v1.0.9/wireproxy_linux_amd64.tar.gz > /dev/null 2>&1 && \
 tar -xzf wireproxy_linux_amd64.tar.gz > /dev/null 2>&1 && \
