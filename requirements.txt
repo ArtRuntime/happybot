@@ -6,7 +6,7 @@ pymongo>=4.15.5
 pytgcrypto>=1.2.12
 py-tgcalls>=2.2.11
 python-dotenv~=1.2.1
-yt-dlp=2026.2.21
+yt-dlp==2026.2.21
 dnspython
 fastapi
 uvicorn
