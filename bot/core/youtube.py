@@ -321,21 +321,12 @@ class YouTube:
             if not use_proxy:
                 _disable_doh_dns()
 
-    async def _ytmusic_attempt(self, query: str, use_proxy: bool) -> list | None:
-        """Run ytmusicapi search with or without proxy."""
-        if use_proxy and config.PROXY_URL:
-            if not hasattr(self.ytmusic, '_session') or not self.ytmusic._session:
-                import requests
-                self.ytmusic._session = requests.Session()
-            self.ytmusic._session.proxies.update({
-                "http": config.PROXY_URL,
-                "https": config.PROXY_URL,
-            })
-        else:
-            # Clear proxy, use DoH DNS instead
-            if hasattr(self.ytmusic, '_session') and self.ytmusic._session:
-                self.ytmusic._session.proxies.clear()
-            _enable_doh_dns()
+    async def _ytmusic_attempt(self, query: str) -> list | None:
+        """Run ytmusicapi search (always uses DoH DNS)."""
+        # Clear proxy, use DoH DNS instead
+        if hasattr(self.ytmusic, '_session') and self.ytmusic._session:
+            self.ytmusic._session.proxies.clear()
+        _enable_doh_dns()
 
         try:
             return await asyncio.wait_for(
@@ -343,8 +334,7 @@ class YouTube:
                 timeout=20,
             )
         finally:
-            if not use_proxy:
-                _disable_doh_dns()
+            _disable_doh_dns()
 
     async def search(self, query: str, m_id: int, video: bool = False) -> Track | None:
         """Search YouTube Music for a query using ytmusicapi."""
@@ -380,32 +370,25 @@ class YouTube:
                 if isinstance(e, TypeError) and "can only concatenate str" in msg:
                     logger.warning("py-yt-search hit known channel.id None bug; skipping.")
                     break  # Not a proxy issue, skip to next fallback
-                logger.warning(f"py-yt-search ({label}) failed: {e}")
+                logger.warning(f"py-yt-search ({label}) failed: {repr(e)}")
                 if not self._is_proxy_error(e):
                     break  # Not a proxy issue, don't retry
                 if not use_proxy:
                     break  # Already tried DoH
                 logger.info("Retrying py-yt-search via DoH DNS...")
 
-        # ── Fallback 1: ytmusicapi ──────────────────────────────────
+        # ── Fallback 1: ytmusicapi (Always DoH DNS) ──────────────────────
         logger.info(f"Falling back to ytmusicapi for: {query}")
         if self.ytmusic:
-            for attempt, use_proxy in enumerate([True, False]):
-                label = "proxy" if use_proxy else "DoH-DNS"
-                try:
-                    results = await self._ytmusic_attempt(query, use_proxy)
-                    if results and len(results) > 0:
-                        track = self._parse_ytmusic_result(results[0], m_id, video)
-                        if track:
-                            logger.info(f"✅ ytmusicapi fallback success ({label}): {results[0].get('title')}")
-                            return track
-                except Exception as ytm_err:
-                    logger.warning(f"ytmusicapi ({label}) failed: {ytm_err}")
-                    if not self._is_proxy_error(ytm_err):
-                        break
-                    if not use_proxy:
-                        break
-                    logger.info("Retrying ytmusicapi via DoH DNS...")
+            try:
+                results = await self._ytmusic_attempt(query)
+                if results and len(results) > 0:
+                    track = self._parse_ytmusic_result(results[0], m_id, video)
+                    if track:
+                        logger.info(f"✅ ytmusicapi fallback success (DoH-DNS): {results[0].get('title')}")
+                        return track
+            except Exception as ytm_err:
+                logger.warning(f"ytmusicapi failed: {ytm_err}")
 
         # ── Fallback 2: yt-dlp search ───────────────────────────────
         logger.info(f"Falling back to yt-dlp search for: {query}")
@@ -505,15 +488,24 @@ class YouTube:
                                     raise ex2
                         else:
                             # Direct check for cookie-less if no fallback exists
-                            logger.warning("_generic_search: Primary failed and no fallback. Retrying cookie-less...")
+                            logger.warning("_generic_search: Primary failed and no fallback. Retrying cookie-less (and without proxy if network error)...")
                             ydl_opts.pop("cookiefile", None)
                             ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
-                            if config.PROXY_URL:
+                            
+                            is_proxy_err = self._is_proxy_error(ex)
+                            if is_proxy_err:
+                                ydl_opts.pop("proxy", None)
+                                _enable_doh_dns()
+                            elif config.PROXY_URL:
                                 ydl_opts["proxy"] = config.PROXY_URL
                             
-                            with self._YoutubeDL(ydl_opts) as ydl_less:
-                                info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
-                                logger.info("✅ Cookie-less fallback success (search)!")
+                            try:
+                                with self._YoutubeDL(ydl_opts) as ydl_less:
+                                    info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
+                                    logger.info("✅ Cookie-less (proxy bypassed) fallback success (search)!")
+                            finally:
+                                if is_proxy_err:
+                                    _disable_doh_dns()
                     else:
                         raise ex
                 
@@ -716,15 +708,24 @@ class YouTube:
                                 else:
                                     raise ex2
                         else:
-                            logger.warning("_generic_playlist: Primary failed and no fallback. Retrying cookie-less...")
+                            logger.warning("_generic_playlist: Primary failed and no fallback. Retrying cookie-less (and without proxy if network error)...")
                             ydl_opts.pop("cookiefile", None)
                             ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
-                            if config.PROXY_URL:
+                            
+                            is_proxy_err = self._is_proxy_error(ex)
+                            if is_proxy_err:
+                                ydl_opts.pop("proxy", None)
+                                _enable_doh_dns()
+                            elif config.PROXY_URL:
                                 ydl_opts["proxy"] = config.PROXY_URL
                             
-                            with self._YoutubeDL(ydl_opts) as ydl_less:
-                                info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
-                                logger.info("✅ Cookie-less fallback success (playlist)!")
+                            try:
+                                with self._YoutubeDL(ydl_opts) as ydl_less:
+                                    info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
+                                    logger.info("✅ Cookie-less fallback success (playlist)!")
+                            finally:
+                                if is_proxy_err:
+                                    _disable_doh_dns()
                     else:
                         raise ex
                 
@@ -892,10 +893,15 @@ class YouTube:
                                     return None
                         
                         # Cookie-less Fallback (Third Layer)
-                        logger.warning("Primary/Fallback failed. Retrying cookie-less (Android + Proxy)...")
+                        logger.warning("Primary/Fallback failed. Retrying cookie-less (and without proxy if network error)...")
                         ydl_opts.pop("cookiefile", None)
                         ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
-                        if config.PROXY_URL:
+                        
+                        is_proxy_err = self._is_proxy_error(ex) or (ex2 and self._is_proxy_error(ex2))
+                        if is_proxy_err:
+                            ydl_opts.pop("proxy", None)
+                            _enable_doh_dns()
+                        elif config.PROXY_URL:
                             ydl_opts["proxy"] = config.PROXY_URL
                             
                         try:
@@ -909,6 +915,9 @@ class YouTube:
                         except Exception as ex3:
                             logger.error(f"Cookie-less fallback failed: {ex3}")
                             return None
+                        finally:
+                            if is_proxy_err:
+                                _disable_doh_dns()
                     
                     logger.error(f"yt-dlp Execution Error: {ex}")
                     if cookie: self.cookies.remove(cookie)
@@ -1058,15 +1067,24 @@ class YouTube:
                                 else:
                                     raise ex2
                         else:
-                            logger.warning("get_stream_url: Primary failed and no fallback. Retrying cookie-less...")
+                            logger.warning("get_stream_url: Primary failed and no fallback. Retrying cookie-less (and without proxy if network error)...")
                             ydl_opts.pop("cookiefile", None)
                             ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
-                            if config.PROXY_URL:
+                            
+                            is_proxy_err = self._is_proxy_error(ex) or (ex2 is not None and self._is_proxy_error(ex2))
+                            if is_proxy_err:
+                                ydl_opts.pop("proxy", None)
+                                _enable_doh_dns()
+                            elif config.PROXY_URL:
                                 ydl_opts["proxy"] = config.PROXY_URL
                             
-                            with self._YoutubeDL(ydl_opts) as ydl_less:
-                                info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
-                                logger.info("✅ Cookie-less fallback success (stream)!")
+                            try:
+                                with self._YoutubeDL(ydl_opts) as ydl_less:
+                                    info = await asyncio.to_thread(ydl_less.extract_info, url, download=False)
+                                    logger.info("✅ Cookie-less (proxy bypassed) fallback success (stream)!")
+                            finally:
+                                if is_proxy_err:
+                                    _disable_doh_dns()
                     else:
                         raise ex
                 
@@ -1139,23 +1157,21 @@ class YouTube:
             if isinstance(mode, str) and mode.lower() not in ("smart", "on", "true", "True"):
                 logger.info(f"Genre Autoplay: {mode}")
                 
-                # Setup session proxy dynamically
-                if config.PROXY_URL:
-                    if not hasattr(self.ytmusic, '_session') or not self.ytmusic._session:
-                        import requests
-                        self.ytmusic._session = requests.Session()
-                    self.ytmusic._session.proxies.update({
-                        "http": config.PROXY_URL,
-                        "https": config.PROXY_URL
-                    })
+                # Clear proxy, use DoH DNS instead
+                if hasattr(self.ytmusic, '_session') and self.ytmusic._session:
+                    self.ytmusic._session.proxies.clear()
+                _enable_doh_dns()
                 
-                # Search for genre-based songs
-                results = await asyncio.to_thread(
-                    self.ytmusic.search,
-                    f"{mode} music",
-                    # filter="songs", # User requested no filter
-                    limit=20
-                )
+                try:
+                    # Search for genre-based songs
+                    results = await asyncio.to_thread(
+                        self.ytmusic.search,
+                        f"{mode} music",
+                        # filter="songs", # User requested no filter
+                        limit=20
+                    )
+                finally:
+                    _disable_doh_dns()
                 
                 if results:
                     import random
@@ -1220,22 +1236,20 @@ class YouTube:
             # Use ytmusicapi's watch playlist (radio feature)
             logger.info(f"Getting autoplay recommendations for: {previous_track.title}")
             
-            # Setup session proxy dynamically
-            if config.PROXY_URL:
-                if not hasattr(self.ytmusic, '_session') or not self.ytmusic._session:
-                    import requests
-                    self.ytmusic._session = requests.Session()
-                self.ytmusic._session.proxies.update({
-                    "http": config.PROXY_URL,
-                    "https": config.PROXY_URL
-                })
+            # Clear proxy, use DoH DNS instead
+            if hasattr(self.ytmusic, '_session') and self.ytmusic._session:
+                self.ytmusic._session.proxies.clear()
+            _enable_doh_dns()
             
-            watch_data = await asyncio.to_thread(
-                self.ytmusic.get_watch_playlist,
-                videoId=previous_track.id,
-                radio=True,  # Enable radio mode for better variety
-                limit=20
-            )
+            try:
+                watch_data = await asyncio.to_thread(
+                    self.ytmusic.get_watch_playlist,
+                    videoId=previous_track.id,
+                    radio=True,  # Enable radio mode for better variety
+                    limit=20
+                )
+            finally:
+                _disable_doh_dns()
             
             if not watch_data or 'tracks' not in watch_data:
                 logger.warning("No watch playlist data, falling back to trending")
