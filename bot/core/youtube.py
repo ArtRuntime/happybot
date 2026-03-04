@@ -5,6 +5,8 @@
 
 import os
 import re
+import json
+import socket
 import yt_dlp
 import random
 import asyncio
@@ -33,6 +35,58 @@ class DownloadCancelledError(Exception):
 _cancelled_downloads: set[int] = set()
 
 
+# ── DNS-over-HTTPS helpers (bypass VPS DNS blocking) ──────────────
+_original_getaddrinfo = socket.getaddrinfo
+_doh_cache: dict[str, list[str]] = {}
+_YOUTUBE_HOSTS = frozenset({
+    "www.youtube.com", "youtube.com", "music.youtube.com",
+    "m.youtube.com", "youtu.be", "i.ytimg.com",
+    "yt3.ggpht.com", "suggestqueries-clients6.youtube.com",
+})
+
+
+def _resolve_via_doh(hostname: str) -> str | None:
+    """Resolve a hostname via Cloudflare/Google DNS-over-HTTPS."""
+    import urllib.request
+    for doh_url in [
+        f"https://1.1.1.1/dns-query?name={hostname}&type=A",
+        f"https://dns.google/resolve?name={hostname}&type=A",
+    ]:
+        try:
+            req = urllib.request.Request(doh_url, headers={"Accept": "application/dns-json"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+                answers = [a["data"] for a in data.get("Answer", []) if a.get("type") == 1]
+                if answers:
+                    return answers[0]
+        except Exception:
+            continue
+    return None
+
+
+def _doh_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    """Patched getaddrinfo: resolves YouTube hosts via DoH, others normally."""
+    if isinstance(host, str) and host in _YOUTUBE_HOSTS:
+        if host not in _doh_cache:
+            ip = _resolve_via_doh(host)
+            if ip:
+                _doh_cache[host] = ip
+                logger.info(f"DoH resolved {host} → {ip}")
+        if host in _doh_cache:
+            return _original_getaddrinfo(_doh_cache[host], port, family, type, proto, flags)
+    return _original_getaddrinfo(host, port, family, type, proto, flags)
+
+
+def _enable_doh_dns():
+    """Enable DoH DNS patching for YouTube domains."""
+    socket.getaddrinfo = _doh_getaddrinfo
+
+
+def _disable_doh_dns():
+    """Restore original DNS resolution."""
+    socket.getaddrinfo = _original_getaddrinfo
+
+
 class YouTube:
     StorageLowError = StorageLowError # Expose exception class 
 
@@ -55,6 +109,8 @@ class YouTube:
     def _YoutubeDL(self, params: dict):
         if "logger" not in params:
             params["logger"] = self.YtDlpLogger()
+        if "remote_components" not in params:
+            params["remote_components"] = ["ejs:github"]
         return yt_dlp.YoutubeDL(params)
 
     def __init__(self):
@@ -83,6 +139,19 @@ class YouTube:
             logger.error(f"Failed to initialize ytmusicapi: {e}")
             self.ytmusic = None
 
+
+    @staticmethod
+    def _is_proxy_error(e: Exception) -> bool:
+        """Check if an exception is likely caused by proxy/network issues."""
+        err = str(e).lower()
+        proxy_indicators = [
+            "readerror", "readtimeout", "read timed out",
+            "unexpected_eof", "ssl", "ssleoferror",
+            "connection refused", "connecttimeout",
+            "max retries exceeded", "connecterror",
+            "remotedisconnected", "connectionreseterror",
+        ]
+        return any(indicator in err for indicator in proxy_indicators)
 
     def cancel_downloads(self, chat_id: int):
         """Mark all downloads for this chat as cancelled."""
@@ -183,11 +252,104 @@ class YouTube:
     def valid(self, url: str) -> bool:
         return bool(re.match(self.regex, url))
 
+    def _parse_pysearch_result(self, data: dict, m_id: int, video: bool) -> Track | None:
+        """Parse a youtube-search-python result dict into a Track."""
+        video_id = data.get('id')
+        title = data.get('title') or "Unknown Title"
+        duration = data.get('duration') or "0:00"
+        channel_data = data.get('channel') or {}
+        channel_name = channel_data.get('name') or "Unknown"
+        thumbnails = data.get('thumbnails') or []
+        thumbnail = thumbnails[-1].get('url', "") if (isinstance(thumbnails, list) and thumbnails) else None
+        wc_data = data.get('viewCount') or {}
+        view_count = wc_data.get('short') or ""
+
+        return Track(
+            id=str(video_id) if video_id else "",
+            channel_name=str(channel_name),
+            duration=str(duration),
+            duration_sec=utils.to_seconds(str(duration)),
+            message_id=m_id,
+            title=str(title)[:50],
+            thumbnail=thumbnail,
+            url=f"https://www.youtube.com/watch?v={video_id}",
+            view_count=str(view_count),
+            video=video,
+        )
+
+    def _parse_ytmusic_result(self, data: dict, m_id: int, video: bool) -> Track | None:
+        """Parse a ytmusicapi search result dict into a Track."""
+        video_id = data.get('videoId')
+        if not video_id:
+            return None
+        artists = data.get('artists', [])
+        channel_name = artists[0].get('name', 'Unknown') if artists else 'Unknown'
+        duration = data.get('duration', '0:00') or '0:00'
+        thumbnails = data.get('thumbnails', [])
+        thumbnail = thumbnails[-1].get('url') if thumbnails else None
+
+        return Track(
+            id=video_id,
+            channel_name=str(channel_name),
+            duration=str(duration),
+            duration_sec=utils.to_seconds(str(duration)),
+            message_id=m_id,
+            title=str(data.get('title', 'Unknown'))[:50],
+            thumbnail=thumbnail,
+            url=f"https://www.youtube.com/watch?v={video_id}",
+            view_count='',
+            video=video,
+        )
+
+    async def _pysearch_attempt(self, query: str, use_proxy: bool) -> dict | None:
+        """Run VideosSearch with or without proxy. Returns raw result dict or None."""
+        if use_proxy and config.PROXY_URL:
+            os.environ['HTTP_PROXY'] = config.PROXY_URL
+            os.environ['HTTPS_PROXY'] = config.PROXY_URL
+        else:
+            os.environ.pop('HTTP_PROXY', None)
+            os.environ.pop('HTTPS_PROXY', None)
+            _enable_doh_dns()
+
+        try:
+            search = VideosSearch(query, limit=1)
+            results = await asyncio.wait_for(search.next(), timeout=15)
+            return results
+        finally:
+            os.environ.pop('HTTP_PROXY', None)
+            os.environ.pop('HTTPS_PROXY', None)
+            if not use_proxy:
+                _disable_doh_dns()
+
+    async def _ytmusic_attempt(self, query: str, use_proxy: bool) -> list | None:
+        """Run ytmusicapi search with or without proxy."""
+        if use_proxy and config.PROXY_URL:
+            if not hasattr(self.ytmusic, '_session') or not self.ytmusic._session:
+                import requests
+                self.ytmusic._session = requests.Session()
+            self.ytmusic._session.proxies.update({
+                "http": config.PROXY_URL,
+                "https": config.PROXY_URL,
+            })
+        else:
+            # Clear proxy, use DoH DNS instead
+            if hasattr(self.ytmusic, '_session') and self.ytmusic._session:
+                self.ytmusic._session.proxies.clear()
+            _enable_doh_dns()
+
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(self.ytmusic.search, query, filter="songs", limit=1),
+                timeout=20,
+            )
+        finally:
+            if not use_proxy:
+                _disable_doh_dns()
+
     async def search(self, query: str, m_id: int, video: bool = False) -> Track | None:
         """Search YouTube Music for a query using ytmusicapi."""
         if "music.youtube.com" in query:
             query = query.replace("music.youtube.com", "www.youtube.com")
-
 
         # If it's a YouTube URL, use generic search to get exact video
         if self.valid(query):
@@ -201,154 +363,101 @@ class YouTube:
             logger.error("ytmusicapi not initialized")
             return None
         
-        try:
-            # Set proxy env locally for httpx
-            if config.PROXY_URL:
-                os.environ['HTTP_PROXY'] = config.PROXY_URL
-                os.environ['HTTPS_PROXY'] = config.PROXY_URL
-
-            # Search using youtube-search-python
-            search = VideosSearch(query, limit=1)
-            results = await search.next()
-            
-            # Clean up immediately
-            if config.PROXY_URL:
-                os.environ.pop('HTTP_PROXY', None)
-                os.environ.pop('HTTPS_PROXY', None)
-            
-            if not results or not results.get('result'):
-                logger.warning("No playable result found in search")
-                return None
-                
-            data = results['result'][0]
-            video_id = data.get('id')
-            
-            title = data.get('title')
-            if not title: title = "Unknown Title"
-            
-            # Extract duration safely
-            duration = data.get('duration')
-            if not duration: duration = "0:00"
-            
-            # Extract channel safely (handle None for 'channel' key)
-            channel_data = data.get('channel') or {}
-            channel_name = channel_data.get('name') or "Unknown"
-            
-            # Extract thumbnail safely (handle None for 'thumbnails' key)
-            thumbnails = data.get('thumbnails') or []
-            thumbnail = thumbnails[-1].get('url', "") if (isinstance(thumbnails, list) and thumbnails) else None
-            
-            # Safe view count extraction
-            wc_data = data.get('viewCount') or {}
-            view_count = wc_data.get('short') or ""
-            
-            return Track(
-                id=str(video_id) if video_id else "",
-                channel_name=str(channel_name),
-                duration=str(duration),
-                duration_sec=utils.to_seconds(str(duration)),
-                message_id=m_id,
-                title=str(title)[:50],
-                thumbnail=thumbnail,
-                url=f"https://www.youtube.com/watch?v={video_id}",
-                view_count=str(view_count),
-                video=video,
-            )
-        except Exception as e:
-            # youtube-search-python sometimes throws a TypeError when channel.id is None:
-            # "can only concatenate str (not 'NoneType') to str". Treat it as a soft failure
-            # and avoid spamming full tracebacks in logs.
-            msg = str(e)
-            if isinstance(e, TypeError) and "can only concatenate str (not \"NoneType\") to str" in msg:
-                logger.warning("py-yt-search hit known channel.id None bug; skipping to fallback.")
-            else:
-                logger.error(f"py-yt-search failed: {e}", exc_info=True)
-            
-            # Fallback 1: YouTube Music (ytmusicapi)
-            logger.info(f"Falling back to ytmusicapi for: {query}")
+        # ── Primary: youtube-search-python ──────────────────────────
+        for attempt, use_proxy in enumerate([True, False]):
+            label = "proxy" if use_proxy else "DoH-DNS"
             try:
-                if self.ytmusic:
-                    # Inject proxy to ytmusicapi session
-                    if config.PROXY_URL:
-                        if not hasattr(self.ytmusic, '_session') or not self.ytmusic._session:
-                            import requests
-                            self.ytmusic._session = requests.Session()
-                        self.ytmusic._session.proxies.update({
-                            "http": config.PROXY_URL,
-                            "https": config.PROXY_URL
-                        })
-                        
-                    results = await asyncio.to_thread(
-                        self.ytmusic.search, query, filter="songs", limit=1
-                    )
-                    
+                results = await self._pysearch_attempt(query, use_proxy)
+                if results and results.get('result'):
+                    track = self._parse_pysearch_result(results['result'][0], m_id, video)
+                    if track:
+                        if attempt > 0:
+                            logger.info(f"✅ py-yt-search succeeded ({label})")
+                        return track
+                logger.warning(f"py-yt-search ({label}): no playable result")
+            except Exception as e:
+                msg = str(e)
+                if isinstance(e, TypeError) and "can only concatenate str" in msg:
+                    logger.warning("py-yt-search hit known channel.id None bug; skipping.")
+                    break  # Not a proxy issue, skip to next fallback
+                logger.warning(f"py-yt-search ({label}) failed: {e}")
+                if not self._is_proxy_error(e):
+                    break  # Not a proxy issue, don't retry
+                if not use_proxy:
+                    break  # Already tried DoH
+                logger.info("Retrying py-yt-search via DoH DNS...")
+
+        # ── Fallback 1: ytmusicapi ──────────────────────────────────
+        logger.info(f"Falling back to ytmusicapi for: {query}")
+        if self.ytmusic:
+            for attempt, use_proxy in enumerate([True, False]):
+                label = "proxy" if use_proxy else "DoH-DNS"
+                try:
+                    results = await self._ytmusic_attempt(query, use_proxy)
                     if results and len(results) > 0:
-                        data = results[0]
-                        video_id = data.get('videoId')
-                        
-                        if video_id:
-                            # Extract artist name
-                            artists = data.get('artists', [])
-                            channel_name = artists[0].get('name', 'Unknown') if artists else 'Unknown'
-                            
-                            # Get duration
-                            duration = data.get('duration', '0:00') or '0:00'
-                            
-                            # Get thumbnail
-                            thumbnails = data.get('thumbnails', [])
-                            thumbnail = thumbnails[-1].get('url') if thumbnails else None
-                            
-                            logger.info(f"✅ ytmusicapi fallback success: {data.get('title')}")
-                            return Track(
-                                id=video_id,
-                                channel_name=str(channel_name),
-                                duration=str(duration),
-                                duration_sec=utils.to_seconds(str(duration)),
-                                message_id=m_id,
-                                title=str(data.get('title', 'Unknown'))[:50],
-                                thumbnail=thumbnail,
-                                url=f"https://www.youtube.com/watch?v={video_id}",
-                                view_count='',
-                                video=video,
-                            )
-            except Exception as ytm_err:
-                logger.warning(f"ytmusicapi fallback failed: {ytm_err}")
-            
-            # Fallback 2: yt-dlp search
-            logger.info(f"Falling back to yt-dlp search for: {query}")
+                        track = self._parse_ytmusic_result(results[0], m_id, video)
+                        if track:
+                            logger.info(f"✅ ytmusicapi fallback success ({label}): {results[0].get('title')}")
+                            return track
+                except Exception as ytm_err:
+                    logger.warning(f"ytmusicapi ({label}) failed: {ytm_err}")
+                    if not self._is_proxy_error(ytm_err):
+                        break
+                    if not use_proxy:
+                        break
+                    logger.info("Retrying ytmusicapi via DoH DNS...")
+
+        # ── Fallback 2: yt-dlp search ───────────────────────────────
+        logger.info(f"Falling back to yt-dlp search for: {query}")
+        for attempt, use_proxy in enumerate([True, False]):
+            label = "proxy" if use_proxy else "DoH-DNS"
             try:
                 cookie = self.get_cookies()
                 ydl_opts = {
                     "quiet": True,
                     "no_warnings": True,
                     "nocheckcertificate": True,
-                    "noplaylist": True, # We only want the first result
-                    "flat_playlist": True, # Don't extract full details yet/fast
+                    "noplaylist": True,
+                    "flat_playlist": True,
+                    "socket_timeout": 20,
                 }
                 if cookie: ydl_opts["cookiefile"] = cookie
-                if config.PROXY_URL: ydl_opts["proxy"] = config.PROXY_URL
+                if use_proxy and config.PROXY_URL:
+                    ydl_opts["proxy"] = config.PROXY_URL
+                else:
+                    _enable_doh_dns()
                 
-                with self._YoutubeDL(ydl_opts) as ydl:
-                    # ytsearch1: returns 1 result
-                    info = await asyncio.to_thread(ydl.extract_info, f"ytsearch1:{query}", download=False)
-                    
-                    if info and 'entries' in info and info['entries']:
-                        entry = info['entries'][0]
-                        video_id = entry.get('id')
-                        return Track(
-                            id=video_id,
-                            channel_name=entry.get('uploader', 'Unknown'),
-                            duration=str(entry.get('duration', "0:00")),
-                            duration_sec=int(entry.get('duration', 0) or 0),
-                            message_id=m_id,
-                            title=entry.get('title', 'Unknown Title')[:50],
-                            thumbnail=None, # flat_playlist doesn't always give thumbs
-                            url=f"https://www.youtube.com/watch?v={video_id}",
-                            view_count=str(entry.get('view_count', '')),
-                            video=video,
-                        )
+                try:
+                    with self._YoutubeDL(ydl_opts) as ydl:
+                        info = await asyncio.to_thread(ydl.extract_info, f"ytsearch1:{query}", download=False)
+                        
+                        if info and 'entries' in info and info['entries']:
+                            entry = info['entries'][0]
+                            video_id = entry.get('id')
+                            if attempt > 0:
+                                logger.info(f"✅ yt-dlp search succeeded ({label})")
+                            return Track(
+                                id=video_id,
+                                channel_name=entry.get('uploader', 'Unknown'),
+                                duration=str(entry.get('duration', "0:00")),
+                                duration_sec=int(entry.get('duration', 0) or 0),
+                                message_id=m_id,
+                                title=entry.get('title', 'Unknown Title')[:50],
+                                thumbnail=None,
+                                url=f"https://www.youtube.com/watch?v={video_id}",
+                                view_count=str(entry.get('view_count', '')),
+                                video=video,
+                            )
+                finally:
+                    if not use_proxy:
+                        _disable_doh_dns()
             except Exception as ex:
-                logger.error(f"yt-dlp fallback search failed: {ex}")
+                logger.error(f"yt-dlp search ({label}) failed: {ex}")
+                if not self._is_proxy_error(ex):
+                    break
+                if not use_proxy:
+                    break
+                logger.info("Retrying yt-dlp search via DoH DNS...")
         
         return None
 
