@@ -1074,8 +1074,9 @@ class YouTube:
                             ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
                             
                             is_proxy_err = self._is_proxy_error(ex)
-                            if 'ex2' in locals() and ex2 is not None:
-                                is_proxy_err = is_proxy_err or self._is_proxy_error(ex2)
+                            last_err = locals().get('ex2')
+                            if last_err:
+                                is_proxy_err = is_proxy_err or self._is_proxy_error(last_err)
                             if is_proxy_err:
                                 ydl_opts.pop("proxy", None)
                                 _enable_doh_dns()

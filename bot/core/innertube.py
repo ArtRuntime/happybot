@@ -53,6 +53,7 @@ class InnerTube:
             "context": self.context
         }
         cookies = await asyncio.to_thread(self._load_cookies)
+        cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
@@ -60,11 +61,12 @@ class InnerTube:
             "Origin": "https://www.youtube.com",
             "Content-Type": "application/json",
             "X-Youtube-Client-Name": "1", # WEB
-            "X-Youtube-Client-Version": self.context["client"]["clientVersion"]
+            "X-Youtube-Client-Version": self.context["client"]["clientVersion"],
+            "Cookie": cookie_str
         }
 
         try:
-            async with aiohttp.ClientSession(cookies=cookies, headers=headers) as session:
+            async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.post(self.url, json=payload) as response:
                     if response.status != 200:
                         err_body = await response.text()
@@ -139,9 +141,10 @@ class InnerTube:
             output_path = f"downloads/{video_id}.mp4"
             
         cookies = await asyncio.to_thread(self._load_cookies)
+        cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
         
         try:
-            async with aiohttp.ClientSession(cookies=cookies) as session:
+            async with aiohttp.ClientSession(headers={"Cookie": cookie_str}) as session:
                 async with session.get(url) as response:
                     if response.status == 403:
                         logger.error("InnerTube: Download 403 Forbidden.")
