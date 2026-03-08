@@ -613,6 +613,11 @@ class TgCall(PyTgCalls):
              ffmpeg_params = f"{ffmpeg_params} {map_flags}" if ffmpeg_params else map_flags
              logger.info(f"Using custom stream map: {map_flags}")
         
+        # Add User-Agent and other headers for network streams to improve probing reliability
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        header_params = f'-headers "User-Agent: {user_agent}\r\n"'
+        ffmpeg_params = f"{ffmpeg_params} {header_params}" if ffmpeg_params else header_params
+        
         # Audio Quality Selection
         quality_setting = await db.get_quality(chat_id)
         if quality_setting == "low":
@@ -802,7 +807,11 @@ class TgCall(PyTgCalls):
             await self.stop(chat_id)
             await message.edit_text(_lang["error_no_call"])
         except exceptions.NoAudioSourceFound:
-            logger.warning(f"NoAudioSourceFound for {media.title} ({media.file_path})")
+            # Silence warning on first few attempts as bot has retry logic
+            if self._consecutive_failures[chat_id] == 0:
+                logger.info(f"Initial NoAudioSourceFound for {media.title} - attempting re-fetch/retry")
+            else:
+                logger.warning(f"NoAudioSourceFound for {media.title} (Attempt {self._consecutive_failures[chat_id] + 1})")
             
             # 1. Clean up corrupted file if local
             if media.file_path and not media.file_path.startswith("http") and os.path.exists(media.file_path):
