@@ -8,7 +8,7 @@ from bot import config, logger
 
 class InnerTube:
     def __init__(self):
-        self.cookies_path = "bot/cookies/cookies.txt"
+        self.cookie_dir = os.path.abspath("bot/cookies")
         self.url = "https://www.youtube.com/youtubei/v1/player"
         self.context = {
             "client": {
@@ -24,19 +24,23 @@ class InnerTube:
         }
 
     def _load_cookies(self) -> Dict:
-        """Loads cookies from the Netscape format file into a dictionary."""
-        if not os.path.exists(self.cookies_path):
-            logger.warning(f"InnerTube: '{self.cookies_path}' not found. Running without login.")
+        """Loads a random cookie from the cookies directory."""
+        if not os.path.exists(self.cookie_dir):
             return {}
 
+        cookie_files = [f for f in os.listdir(self.cookie_dir) if f.endswith(".txt")]
+        if not cookie_files:
+            return {}
+
+        import random
+        selected_cookie = os.path.join(self.cookie_dir, random.choice(cookie_files))
+        
         try:
-            jar = http.cookiejar.MozillaCookieJar(self.cookies_path)
+            jar = http.cookiejar.MozillaCookieJar(selected_cookie)
             jar.load(ignore_discard=True, ignore_expires=True)
-            cookies = {cookie.name: cookie.value for cookie in jar}
-            # logger.info("InnerTube: Cookies loaded successfully.")
-            return cookies
+            return {cookie.name: cookie.value for cookie in jar}
         except Exception as e:
-            logger.error(f"InnerTube: Error loading cookies: {e}")
+            logger.error(f"InnerTube: Error loading cookies from {selected_cookie}: {e}")
             return {}
 
     async def get_stream_info(self, video_id: str) -> Optional[Dict]:

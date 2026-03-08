@@ -952,8 +952,9 @@ class YouTube:
     
     async def _check_url_alive(self, url: str) -> bool:
         """Passive check if URL is reachable via HEAD request."""
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"}
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.head(url, timeout=5, allow_redirects=True) as resp:
                     return resp.status in [200, 302]
         except:
