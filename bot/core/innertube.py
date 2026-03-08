@@ -12,13 +12,14 @@ class InnerTube:
         self.url = "https://www.youtube.com/youtubei/v1/player"
         self.context = {
             "client": {
-                "clientName": "ANDROID",
-                "clientVersion": "19.29.35",
-                "androidSdkVersion": 30,
-                "userAgent": "com.google.android.youtube/19.29.35 (Linux; U; Android 11) gzip",
+                "clientName": "WEB",
+                "clientVersion": "2.20241113.01.00",
                 "hl": "en",
                 "gl": "US",
                 "utcOffsetMinutes": 0
+            },
+            "user": {
+                "lockedSafetyMode": False
             }
         }
 
@@ -49,11 +50,21 @@ class InnerTube:
         }
         cookies = await asyncio.to_thread(self._load_cookies)
 
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Referer": "https://www.youtube.com/",
+            "Origin": "https://www.youtube.com",
+            "Content-Type": "application/json",
+            "X-Youtube-Client-Name": "1", # WEB
+            "X-Youtube-Client-Version": self.context["client"]["clientVersion"]
+        }
+
         try:
-            async with aiohttp.ClientSession(cookies=cookies) as session:
+            async with aiohttp.ClientSession(cookies=cookies, headers=headers) as session:
                 async with session.post(self.url, json=payload) as response:
                     if response.status != 200:
-                        logger.error(f"InnerTube: API returned {response.status}")
+                        err_body = await response.text()
+                        logger.error(f"InnerTube: API returned {response.status}. Body: {err_body}")
                         return None
                     
                     data = await response.json()
@@ -65,17 +76,29 @@ class InnerTube:
                 return None
 
             formats = data['streamingData'].get('formats', [])
+            adaptive_formats = data['streamingData'].get('adaptiveFormats', [])
+            all_formats = formats + adaptive_formats
             stream_url = None
             
-            # Prefer itag 18 (360p) for reliability
-            for fmt in formats:
-                if fmt.get('itag') == 18:
+            # Prefer itag 18 (360p) or itag 22 (720p) for reliability in 'formats' (muxed)
+            # Or high quality audio itags (251) in 'adaptiveFormats'
+            for fmt in all_formats:
+                if fmt.get('itag') == 22: # 720p muxed
                     stream_url = fmt['url']
                     break
             
-            # Fallback to first available format
-            if not stream_url and formats:
-                stream_url = formats[0]['url']
+            if not stream_url:
+                for fmt in all_formats:
+                    if fmt.get('itag') == 18: # 360p muxed
+                        stream_url = fmt['url']
+                        break
+            
+            # Fallback to first available format with URL
+            if not stream_url:
+                for fmt in all_formats:
+                    if 'url' in fmt:
+                        stream_url = fmt['url']
+                        break
                 
             if not stream_url:
                 logger.warning("InnerTube: No valid stream URL found.")

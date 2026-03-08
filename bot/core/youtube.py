@@ -111,6 +111,7 @@ class YouTube:
             params["logger"] = self.YtDlpLogger()
         if "remote_components" not in params:
             params["remote_components"] = ["ejs:github"]
+        params["js_runtimes"] = {"node": {}}
         return yt_dlp.YoutubeDL(params)
 
     def __init__(self):
@@ -1071,7 +1072,9 @@ class YouTube:
                             ydl_opts.pop("cookiefile", None)
                             ydl_opts["extractor_args"] = {"youtube": {"player_client": ["android"]}}
                             
-                            is_proxy_err = self._is_proxy_error(ex) or (ex2 is not None and self._is_proxy_error(ex2))
+                            is_proxy_err = self._is_proxy_error(ex)
+                            if 'ex2' in locals() and ex2 is not None:
+                                is_proxy_err = is_proxy_err or self._is_proxy_error(ex2)
                             if is_proxy_err:
                                 ydl_opts.pop("proxy", None)
                                 _enable_doh_dns()

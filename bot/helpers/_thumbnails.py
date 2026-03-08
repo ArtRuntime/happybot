@@ -65,7 +65,7 @@ class Thumbnail:
             thumbnail_url = song.thumbnail
             if not thumbnail_url or thumbnail_url == "":
                 from bot import logger
-                logger.warning(f"Thumbnail URL missing for {song.title}, using YouTube default")
+                logger.info(f"Thumbnail URL missing for {song.title}, using YouTube default")
                 
                 # Try multiple YouTube thumbnail qualities (maxres not always available)
                 thumbnail_qualities = [
