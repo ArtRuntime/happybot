@@ -355,7 +355,7 @@ class YouTube:
             return None
         
         # ── Primary: youtube-search-python ──────────────────────────
-        for attempt, use_proxy in enumerate([True, False]):
+        for attempt, use_proxy in enumerate([False]):
             label = "proxy" if use_proxy else "DoH-DNS"
             try:
                 results = await self._pysearch_attempt(query, use_proxy)
@@ -932,6 +932,11 @@ class YouTube:
         file_path = await asyncio.to_thread(_download)
         
         if file_path:
+            try:
+                file_size = os.path.getsize(file_path)
+                await db.enforce_cache_limit(file_size)
+            except Exception as e:
+                logger.error(f"Failed to enforce cache limit: {e}")
             return file_path
 
         # ---------------------------------------------------------
@@ -944,6 +949,11 @@ class YouTube:
                 path = await innertube.download(video_id, f"downloads/{file_name_base}.mp4")
                 if path:
                     logger.info(f"✅ InnerTube Fallback Success: {path}")
+                    try:
+                        file_size = os.path.getsize(path)
+                        await db.enforce_cache_limit(file_size)
+                    except Exception as e:
+                        logger.error(f"Failed to enforce cache limit: {e}")
                     return path
             except Exception as e:
                 logger.error(f"InnerTube Fallback Error: {e}")
@@ -971,6 +981,15 @@ class YouTube:
         Returns:
             Direct HTTP/HTTPS stream URL, or None if failed
         """
+        # Check if file exists locally in cache
+        if not video_id.startswith("http"):
+            file_name_base = video_id
+            for ext in [".mp4", ".mkv", ".webm", ".m4a", ".mp3"]:
+                path = f"downloads/{file_name_base}{ext}"
+                if os.path.exists(path) and os.path.getsize(path) > 0:
+                    logger.info(f"💾 Found local cached file for {video_id}, playing locally.")
+                    return path
+
         if video_id.startswith("http"):
             url = video_id
         else:

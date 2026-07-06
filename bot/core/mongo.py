@@ -56,6 +56,9 @@ class MongoDB:
         
         # Stream URL Cache
         self.stream_cache = self.db.stream_cache
+        
+        # Media Cache Metadata
+        self.cache_metadata = self.db.cache_metadata
 
         # SangMata Collections
         self.sangmata_users = self.db.sangmata_users
@@ -592,6 +595,27 @@ class MongoDB:
         await self.get_logger()
         await self.get_sessions()  # Load sessions into cache
         logger.info("Database cache loaded.")
+        
+        # Validate cache files presence
+        await self.validate_media_cache()
+
+    async def validate_media_cache(self) -> None:
+        """
+        Validate all tracks in cache_metadata.
+        If the physical file does not exist, remove the metadata from MongoDB.
+        """
+        import os
+        removed_count = 0
+        try:
+            async for song in self.cache_metadata.find():
+                file_path = song.get("file_path")
+                if not file_path or not os.path.exists(file_path):
+                    await self.cache_metadata.delete_one({"_id": song["_id"]})
+                    removed_count += 1
+            if removed_count > 0:
+                logger.info(f"Cache validation complete: Removed {removed_count} stale cache records from database.")
+        except Exception as e:
+            logger.error(f"Error during cache validation: {e}")
 
     # STREAM CACHE METHODS
     async def add_stream_cache(self, video_id: str, url: str, expire: int) -> None:
@@ -611,6 +635,130 @@ class MongoDB:
         """
         return await self.stream_cache.find_one({"_id": video_id})
 
+    # CACHE CONFIGURATION & METADATA
+    async def get_max_cache_limit(self) -> tuple[int, str]:
+        """
+        Get the current max cache limit from DB.
+        Returns:
+            tuple: (limit_in_bytes, limit_string)
+        """
+        doc = await self.cache.find_one({"_id": "max_cache_limit"})
+        if doc:
+            return doc.get("limit_bytes", 10 * 1024 * 1024 * 1024), doc.get("limit_str", "10.00 GB")
+        # Default: 10 GB
+        return 10 * 1024 * 1024 * 1024, "10.00 GB"
+
+    async def set_max_cache_limit(self, limit_str: str) -> int:
+        """
+        Parse human readable limit string (e.g. '500MB', '10GB') and save it.
+        Returns:
+            int: The limit in bytes.
+        """
+        import re
+        limit_str = limit_str.strip().upper()
+        match = re.match(r"^(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB)?$", limit_str)
+        if not match:
+            raise ValueError("Invalid limit format. Use e.g. 500MB, 10GB.")
+        
+        value = float(match.group(1))
+        unit = match.group(2) or "B"
+        
+        multiplier = {
+            "B": 1,
+            "KB": 1024,
+            "MB": 1024 * 1024,
+            "GB": 1024 * 1024 * 1024,
+            "TB": 1024 * 1024 * 1024 * 1024
+        }[unit]
+        
+        limit_bytes = int(value * multiplier)
+        formatted_str = f"{value:.2f} {unit}"
+        
+        await self.cache.update_one(
+            {"_id": "max_cache_limit"},
+            {"$set": {"limit_bytes": limit_bytes, "limit_str": formatted_str}},
+            upsert=True
+        )
+        return limit_bytes
+
+    async def enforce_cache_limit(self, new_file_size: int = 0) -> None:
+        """
+        Sum all cached files in the database. If total exceeds limit,
+        evict files based on LFU (play_count) then LRU (last_played_at) rules.
+        """
+        import os
+        limit_bytes, _ = await self.get_max_cache_limit()
+        
+        # Calculate current tracked cache size
+        pipeline = [{"$group": {"_id": None, "total": {"$sum": "$file_size"}}}]
+        cursor = await self.cache_metadata.aggregate(pipeline)
+        result = await cursor.to_list(length=1)
+        total_size = result[0]["total"] if result else 0
+        
+        if total_size + new_file_size <= limit_bytes:
+            return
+            
+        logger.info(f"Cache limit exceeded ({total_size + new_file_size} / {limit_bytes} bytes). Enforcing eviction...")
+        
+        # Evict oldest & least played songs
+        # Sort by play_count ASC (LFU) and last_played_at ASC (LRU)
+        async for song in self.cache_metadata.find().sort([("play_count", 1), ("last_played_at", 1)]):
+            file_path = song.get("file_path")
+            file_size = song.get("file_size", 0)
+            
+            # Physically delete the file
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    logger.info(f"Evicted file from cache: {file_path} (saved {file_size} bytes)")
+                except Exception as e:
+                    logger.error(f"Failed to delete evicted file {file_path}: {e}")
+            
+            # Remove from DB
+            await self.cache_metadata.delete_one({"_id": song["_id"]})
+            
+            total_size -= file_size
+            if total_size + new_file_size <= limit_bytes:
+                break
+        
+        logger.info(f"Eviction complete. Current cache size: {total_size} bytes.")
+
+    async def register_cache_play(self, media) -> None:
+        """
+        Registers a play event for a media object, updating its statistics in the database.
+        Runs cache limit checks.
+        """
+        import os
+        from datetime import datetime
+        
+        if not media or not media.file_path or media.file_path.startswith("http"):
+            return # Don't cache network streams or empty paths
+            
+        try:
+            file_size = 0
+            if os.path.exists(media.file_path):
+                file_size = os.path.getsize(media.file_path)
+            
+            # Upsert into cache_metadata
+            await self.cache_metadata.update_one(
+                {"_id": media.id},
+                {
+                    "$set": {
+                        "file_path": media.file_path,
+                        "title": media.title,
+                        "format": "video" if getattr(media, "video", False) else "audio",
+                        "file_size": file_size,
+                        "last_played_at": datetime.now(),
+                    },
+                    "$inc": {"play_count": 1}
+                },
+                upsert=True
+            )
+            
+            # Enforce limits after recording
+            await self.enforce_cache_limit()
+        except Exception as e:
+            logger.error(f"Failed to register cache play for {media.title}: {e}")
 
     # FEDERATION METHODS
     async def create_fed(self, fed_name, user_id, fed_id):

@@ -9,7 +9,7 @@ class Config:
         self.API_HASH = getenv("API_HASH")
 
         self.BOT_TOKEN = getenv("BOT_TOKEN")
-        self.MONGO_URL = getenv("MONGO_URL")
+        self.MONGO_URL = getenv("MONGODB_URI")
         self.MONGO_DB_NAME = getenv("MONGO_DB_NAME", "HappyBot")
         self.REDIS_URL = getenv("REDIS_URL")
         self.REDIS_PREFIX = getenv("REDIS_PREFIX", "happybot-")

@@ -196,11 +196,20 @@ class Userbot(Client):
         
         logger.info(f"Setting up logs group for '{client.name}'...")
         
-        # Check if assistant is already in the logs group
+        # Pre-resolve assistant peer on main bot to avoid PEER_ID_INVALID
+        try:
+            if getattr(client, "username", None):
+                await app.get_users(client.username)
+            else:
+                await app.get_users(client.id)
+        except Exception as e:
+            logger.debug(f"Failed to pre-resolve peer for '{client.name}': {e}")
+
+        # Check if assistant is already in the logs group (via self-check to avoid PEER_ID_INVALID)
         is_member = False
         is_admin = False
         try:
-            member = await app.get_chat_member(config.LOGGER_ID, client.id)
+            member = await client.get_chat_member(config.LOGGER_ID, "me")
             is_member = True
             # Check if already an admin
             if member.status in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
@@ -209,7 +218,7 @@ class Userbot(Client):
             else:
                 logger.debug(f"✓ Assistant '{client.name}' already in logs group (member)")
         except Exception as e:
-            logger.debug(f"✗ Assistant '{client.name}' not in logs group yet: {e}")
+            logger.debug(f"✗ Assistant '{client.name}' not in logs group yet (via self-check): {e}")
         
         # Only invite if not already a member
         if not is_member:

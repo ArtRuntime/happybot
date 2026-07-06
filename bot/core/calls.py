@@ -100,11 +100,12 @@ class TgCall(PyTgCalls):
                 except:
                     pass
 
-            if media.file_path and os.path.exists(media.file_path):
-                try:
-                    await asyncio.to_thread(os.remove, media.file_path)
-                except:
-                    pass
+            # We keep the file in cache now
+            # if media.file_path and os.path.exists(media.file_path):
+            #     try:
+            #         await asyncio.to_thread(os.remove, media.file_path)
+            #     except:
+            #         pass
             
             # Cleanup thumbnail
             thumb_path = f"cache/{media.id}.png"
@@ -118,12 +119,13 @@ class TgCall(PyTgCalls):
         all_queued = await queue.get_queue(chat_id)
         if all_queued:
             for item in all_queued:
-                if item.file_path and os.path.exists(item.file_path):
-                    try:
-                        await asyncio.to_thread(os.remove, item.file_path)
-                        logger.info(f"Cleaned up cached file: {item.file_path}")
-                    except:
-                        pass
+                # We keep the file in cache now
+                # if item.file_path and os.path.exists(item.file_path):
+                #     try:
+                #         await asyncio.to_thread(os.remove, item.file_path)
+                #         logger.info(f"Cleaned up cached file: {item.file_path}")
+                #     except:
+                #         pass
                 # Cleanup thumbnail
                 thumb_path = f"cache/{item.id}.png"
                 if os.path.exists(thumb_path):
@@ -596,6 +598,22 @@ class TgCall(PyTgCalls):
             await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
             return await self.play_next(chat_id)
 
+        # Check if local cached file is missing from disk
+        if not media.file_path.startswith("http") and not os.path.exists(media.file_path):
+            logger.warning(f"Cached local file {media.file_path} is missing! Cleaning DB metadata and redownloading...")
+            try:
+                # Remove stale cache record from database so that download runs fresh
+                await db.cache_metadata.delete_one({"_id": media.id})
+                # Attempt download again
+                media.file_path = await yt.download(media.id, video=media.video)
+            except Exception as e:
+                logger.error(f"Failed to redownload missing cached file: {e}")
+                media.file_path = None
+
+            if not media.file_path or not os.path.exists(media.file_path):
+                await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
+                return await self.play_next(chat_id)
+
         # Build ffmpeg parameters
         ffmpeg_params = f"-ss {seek_time}" if seek_time > 1 else None
         
@@ -614,9 +632,10 @@ class TgCall(PyTgCalls):
              logger.info(f"Using custom stream map: {map_flags}")
         
         # Add User-Agent and other headers for network streams to improve probing reliability
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        header_params = f'-headers "User-Agent: {user_agent}\r\n"'
-        ffmpeg_params = f"{ffmpeg_params} {header_params}" if ffmpeg_params else header_params
+        if media.file_path.startswith("http"):
+            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            header_params = f'-headers "User-Agent: {user_agent}\r\n"'
+            ffmpeg_params = f"{ffmpeg_params} {header_params}" if ffmpeg_params else header_params
         
         # Audio Quality Selection
         quality_setting = await db.get_quality(chat_id)
@@ -703,6 +722,9 @@ class TgCall(PyTgCalls):
 
                 await db.add_call(chat_id)
                 self._consecutive_failures[chat_id] = 0
+                
+                # Register track in cache metadata database
+                await db.register_cache_play(media)
                 
                 # Start watchdog to auto-skip if stream gets stuck
                 duration_sec = getattr(media, 'duration_sec', 0) or utils.to_seconds(media.duration)
@@ -981,11 +1003,12 @@ class TgCall(PyTgCalls):
                     pass
                 except Exception as e:
                     logger.error(f"Failed to cleanup buttons for {old_media.title}: {e}")
-            if old_media.file_path and os.path.exists(old_media.file_path):
-                try:
-                    await asyncio.to_thread(os.remove, old_media.file_path)
-                except:
-                    pass
+            # We keep the file in cache now
+            # if old_media.file_path and os.path.exists(old_media.file_path):
+            #     try:
+            #         await asyncio.to_thread(os.remove, old_media.file_path)
+            #     except:
+            #         pass
             
             # Cleanup thumbnail
             thumb_path = f"cache/{old_media.id}.png"

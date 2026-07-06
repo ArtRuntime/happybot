@@ -188,8 +188,53 @@ async def _help(_, query: types.CallbackQuery):
         return await query.answer(url=f"https://t.me/{app.username}?start=help")
 
     if data[1] == "back":
+        import psutil
+        import os
+        
+        # Calculate CPU/RAM usage
+        pid = os.getpid()
+        process = psutil.Process(pid)
+        cpu_percent = process.cpu_percent(interval=0.1)
+        memory_info = process.memory_info()
+        memory_percent = process.memory_percent()
+        
+        # Calculate Cache storage details
+        limit_bytes, limit_str = await db.get_max_cache_limit()
+        
+        # Calculate current cache size from database
+        pipeline = [{"$group": {"_id": None, "total": {"$sum": "$file_size"}}}]
+        cursor = await db.cache_metadata.aggregate(pipeline)
+        result = await cursor.to_list(length=1)
+        total_bytes = result[0]["total"] if result else 0
+        
+        # Storage left
+        left_bytes = max(0, limit_bytes - total_bytes)
+        
+        # Human-readable formatting helper
+        def get_size_str(bytes_val):
+            for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                if bytes_val < 1024.0:
+                    return f"{bytes_val:.2f} {unit}"
+                bytes_val /= 1024.0
+            return f"{bytes_val:.2f} PB"
+            
+        current_str = get_size_str(total_bytes)
+        left_str = get_size_str(left_bytes)
+        
+        health_text = (
+            f"🖥️ <b>Bot Health Status:</b>\n"
+            f"├ <b>CPU Usage:</b> <code>{cpu_percent}%</code>\n"
+            f"└ <b>RAM Usage:</b> <code>{memory_info.rss / 1024**2:.2f} MB ({memory_percent:.1f}%)</code>\n\n"
+            f"💾 <b>Cache Storage:</b>\n"
+            f"├ <b>Used:</b> <code>{current_str}</code>\n"
+            f"├ <b>Limit:</b> <code>{limit_str}</code>\n"
+            f"└ <b>Storage Left:</b> <code>{left_str}</code>\n\n"
+        )
+        
+        help_menu_text = health_text + query.lang["help_menu"]
+        
         return await query.edit_message_text(
-            text=query.lang["help_menu"], reply_markup=buttons.help_markup(query.lang)
+            text=help_menu_text, reply_markup=buttons.help_markup(query.lang)
         )
     elif data[1] == "close":
         try:

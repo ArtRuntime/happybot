@@ -2,6 +2,43 @@
 # Licensed under the MIT License.
 # This file is part of happybot
 
+# Patch httpx to support 'proxies' keyword argument for backward compatibility with youtube-search-python
+import httpx
+
+original_async_init = httpx.AsyncClient.__init__
+def patched_async_init(self, *args, **kwargs):
+    if "proxies" in kwargs:
+        proxies = kwargs.pop("proxies")
+        if proxies:
+            if isinstance(proxies, dict):
+                if "https://" in proxies:
+                    kwargs["proxy"] = proxies["https://"]
+                elif "http://" in proxies:
+                    kwargs["proxy"] = proxies["http://"]
+                else:
+                    kwargs["proxy"] = list(proxies.values())[0]
+            else:
+                kwargs["proxy"] = proxies
+    original_async_init(self, *args, **kwargs)
+httpx.AsyncClient.__init__ = patched_async_init
+
+original_init = httpx.Client.__init__
+def patched_init(self, *args, **kwargs):
+    if "proxies" in kwargs:
+        proxies = kwargs.pop("proxies")
+        if proxies:
+            if isinstance(proxies, dict):
+                if "https://" in proxies:
+                    kwargs["proxy"] = proxies["https://"]
+                elif "http://" in proxies:
+                    kwargs["proxy"] = proxies["http://"]
+                else:
+                    kwargs["proxy"] = list(proxies.values())[0]
+            else:
+                kwargs["proxy"] = proxies
+    original_init(self, *args, **kwargs)
+httpx.Client.__init__ = patched_init
+
 
 import time
 import logging
