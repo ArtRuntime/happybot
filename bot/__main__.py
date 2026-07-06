@@ -114,6 +114,15 @@ async def main():
         
         asyncio.create_task(cookie_refresh_loop())
 
+    if getattr(config, "COOKIE_WEBHOOK_BACKEND_URL", None):
+        async def daily_cookie_webhook_loop():
+            while True:
+                await asyncio.sleep(24 * 3600)
+                logger.info("Daily scheduled cookie webhook triggering...")
+                await yt.trigger_cookie_webhook()
+        
+        asyncio.create_task(daily_cookie_webhook_loop())
+
     sudoers = await db.get_sudoers()
     app.sudoers.update(sudoers)
     app.bl_users.update(await db.get_blacklisted())

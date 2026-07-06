@@ -20,6 +20,7 @@ class Media:
     video: bool = False
     req_type: str = None
     played_at: float = 0
+    is_live: bool = False
 
 
 @dataclass
@@ -39,3 +40,4 @@ class Track:
     video: bool = False
     req_type: str = None
     played_at: float = 0
+    is_live: bool = False

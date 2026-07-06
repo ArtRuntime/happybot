@@ -130,34 +130,10 @@ class Userbot(Client):
 
     async def boot(self):
         """
-        Perform auto-migration of env sessions.
+        Pre-load assistants and initialize.
         Note: We NO LONGER start all sessions here. They are lazy loaded.
         """
         from bot import db
-        
-        # Auto-migration: Check if any env sessions exist
-        env_sessions = []
-        if config.SESSION1:
-            env_sessions.append(("SESSION1", config.SESSION1, "Assistant 1"))
-        if config.SESSION2:
-            env_sessions.append(("SESSION2", config.SESSION2, "Assistant 2"))
-        if config.SESSION3:
-            env_sessions.append(("SESSION3", config.SESSION3, "Assistant 3"))
-        
-        # Migrate env sessions to DB if they exist
-        if env_sessions:
-            logger.info("Found SESSION env vars, migrating to database...")
-            for env_name, session_string, friendly_name in env_sessions:
-                try:
-                    # Check if already migrated
-                    existing = await db.get_session_by_name(friendly_name)
-                    if not existing:
-                        await db.add_session(session_string, friendly_name, config.OWNER_ID)
-                        logger.info(f"Migrated {env_name} to database as '{friendly_name}'")
-                    else:
-                        logger.info(f"{env_name} already migrated as '{friendly_name}'")
-                except Exception as e:
-                    logger.error(f"Failed to migrate {env_name}: {e}")
         
         # Always start the first 3 assistants for readiness
         logger.info("Pre-loading top 3 assistants...")

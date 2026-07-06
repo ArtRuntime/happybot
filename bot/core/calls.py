@@ -727,7 +727,13 @@ class TgCall(PyTgCalls):
                 await db.register_cache_play(media)
                 
                 # Start watchdog to auto-skip if stream gets stuck
-                duration_sec = getattr(media, 'duration_sec', 0) or utils.to_seconds(media.duration)
+                is_live = getattr(media, 'is_live', False) or media.duration == "🔴 LIVE"
+                duration_sec = 0
+                if not is_live:
+                    try:
+                        duration_sec = getattr(media, 'duration_sec', 0) or utils.to_seconds(media.duration)
+                    except:
+                        duration_sec = 0
                 if duration_sec > 0:
                     await self._start_watchdog(chat_id, duration_sec)
                 
@@ -1092,7 +1098,10 @@ class TgCall(PyTgCalls):
         
         # Show appropriate message based on streaming/downloading
         from bot import config
-        if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me") and not media.video:
+        is_live = getattr(media, "is_live", False)
+        if is_live:
+            msg = await app.send_message(chat_id=chat_id, text="📡 Connecting to live stream...")
+        elif config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me") and not media.video:
             msg = await app.send_message(chat_id=chat_id, text="⏭️ Loading next track...")
         else:
             msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
@@ -1101,12 +1110,12 @@ class TgCall(PyTgCalls):
         if media.req_type != "telegram":
             # Direct streaming for YouTube/external URLs (Audio Only)
             # We force download for video because Telegram streaming is unstable for video
-            if config.ENABLE_DIRECT_STREAMING and not media.url.startswith("t.me") and not media.video:
+            if is_live or (config.ENABLE_DIRECT_STREAMING and not media.url.startswith("t.me") and not media.video):
                 # Direct streaming for YouTube/external URLs
                 logger.info(f"🎵 Using direct streaming for: {media.title}")
                 quality = await db.get_quality(chat_id)
                 media.file_path = await yt.get_stream_url(media.id, video=media.video, quality=quality)
-                if not media.file_path:
+                if not media.file_path and not is_live:
                     logger.warning(f"Stream URL extraction failed, falling back to download")
                     media.file_path = await yt.download(media.id, video=media.video)
             else:

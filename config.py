@@ -21,11 +21,6 @@ class Config:
         self.QUEUE_LIMIT = int(getenv("QUEUE_LIMIT", 20))
         self.PLAYLIST_LIMIT = int(getenv("PLAYLIST_LIMIT", 0)) # 0 = Unlimited
 
-        # Sessions (optional - now stored in MongoDB)
-        self.SESSION1 = getenv("SESSION", None) or getenv("SESSION1", None)
-        self.SESSION2 = getenv("SESSION2", None)
-        self.SESSION3 = getenv("SESSION3", None)
-
         self.SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/alex5402")
         self.SUPPORT_CHAT = getenv("SUPPORT_CHAT", "https://t.me/alex5402")
 
@@ -37,6 +32,7 @@ class Config:
         ]
         self.BROWSER_JSON_URL = getenv("BROWSER_JSON_URL")
         self.COOKIE_REFRESH_INTERVAL = int(getenv("COOKIE_REFRESH_INTERVAL", 5)) * 60  # Default 5 minutes
+        self.COOKIE_WEBHOOK_BACKEND_URL = getenv("COOKIE_WEBHOOK_BACKEND_URL")
         self.DEFAULT_THUMB = getenv("DEFAULT_THUMB", "https://images.alphacoders.com/685/thumb-1920-685120.png")
         self.PING_IMG = getenv("PING_IMG", "https://images6.alphacoders.com/134/thumb-1920-1345576.jpeg")
         self.START_IMG = getenv("START_IMG", "https://images3.alphacoders.com/132/thumbbig-1323165.webp")
@@ -56,9 +52,9 @@ class Config:
         self.RESTORE_ON_STARTUP: bool = getenv("RESTORE_ON_STARTUP", "true").lower() in ("true", "1", "yes")
 
         # Proxy Configuration
-        self.PROXY_HOST = getenv("PROXY_HOST", "127.0.0.1")
-        self.PROXY_PORT = int(getenv("PROXY_PORT") or getenv("PROXY_HTTP_PORT") or 0)
-        self.PROXY_HTTP_PORT = int(getenv("PROXY_HTTP_PORT", 0)) # Fallback/Alternative HTTP port
+        self.PROXY_HOST = getenv("PROXY_HOST")
+        self.PROXY_HTTP_PORT = int(getenv("PROXY_HTTP_PORT", 40001)) # Fallback/Alternative HTTP port
+        self.PROXY_PORT = int(getenv("PROXY_PORT") or getenv("PROXY_HTTP_PORT") or 40000)
         self.PROXY_USERNAME = getenv("PROXY_USERNAME")
         self.PROXY_PASSWORD = getenv("PROXY_PASSWORD")
         self.PROXY_SCHEME = getenv("PROXY_SCHEME", "http") # "socks5" or "http"

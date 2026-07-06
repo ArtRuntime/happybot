@@ -7,7 +7,7 @@ import os
 import shutil
 from pyrogram import filters, types
 
-from bot import app, lang
+from bot import app, db, lang
 
 
 @app.on_message(filters.command(["clean", "cleanup"]) & filters.group & ~app.bl_users)
@@ -17,10 +17,17 @@ async def _clean(_, m: types.Message):
     if m.from_user.id not in app.sudoers:
         return
     
-    sent = await m.reply_text("🧹 Cleaning cache and downloads...")
+    sent = await m.reply_text("🧹 Cleaning cache, downloads, and database...")
     
     cleaned_files = 0
     cleaned_size = 0
+    
+    # Clean Mongo DB cache collections
+    try:
+        await db.cache_metadata.delete_many({})
+        await db.stream_cache.delete_many({})
+    except Exception as e:
+        pass
     
     dirs_to_clean = ["downloads", "cache"]
     

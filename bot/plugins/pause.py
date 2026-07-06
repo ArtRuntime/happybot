@@ -49,6 +49,13 @@ async def _pause(_, m: types.Message):
         text = f"⏸️ <u><b>Stream Paused</b></u>\n\n<b>Title:</b> <a href='{media.url}'>{media.title}</a>\n\n<b>Duration:</b> {media.duration}\n<b>Paused by:</b> {m.from_user.mention}"
         
         try:
+            duration_sec = utils.to_seconds(media.duration)
+        except:
+            duration_sec = 0
+            
+        timer = utils.make_progress_bar(elapsed, duration_sec) if duration_sec > 0 else None
+
+        try:
             await app.edit_message_media(
                 chat_id=m.chat.id,
                 message_id=media.message_id,
@@ -57,7 +64,7 @@ async def _pause(_, m: types.Message):
                     chat_id=m.chat.id, 
                     status=m.lang["paused"], 
                     autoplay=autoplay_status,
-                    timer=utils.make_progress_bar(elapsed, utils.to_seconds(media.duration))
+                    timer=timer
                 ),
             )
         except:
@@ -67,7 +74,7 @@ async def _pause(_, m: types.Message):
                 reply_markup=buttons.controls(
                     chat_id=m.chat.id, 
                     autoplay=autoplay_status,
-                    timer=utils.make_progress_bar(elapsed, utils.to_seconds(media.duration))
+                    timer=timer
                 ),
             )
     else:

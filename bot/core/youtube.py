@@ -188,6 +188,49 @@ class YouTube:
         return None
 
 
+    async def trigger_cookie_webhook(self) -> None:
+        """Send a POST request to COOKIE_WEBHOOK_BACKEND_URL to trigger cookie generation,
+        then wait 10 seconds and re-download/refresh cookies."""
+        url = getattr(config, 'COOKIE_WEBHOOK_BACKEND_URL', None)
+        if not url:
+            logger.info("COOKIE_WEBHOOK_BACKEND_URL is not configured.")
+            return
+
+        import time
+        now = time.time()
+        if now - getattr(self, '_last_webhook_trigger', 0) < 300:
+            logger.info("Cookie webhook triggered recently, skipping to avoid spamming.")
+            return
+        self._last_webhook_trigger = now
+
+        logger.info(f"Triggering cookie generation via webhook: {url}")
+        try:
+            # We can use aiohttp to send a POST request
+            if config.PROXY_URL and config.PROXY_URL.startswith("socks"):
+                from aiohttp_socks import ProxyConnector
+                connector = ProxyConnector.from_url(config.PROXY_URL)
+                session = aiohttp.ClientSession(connector=connector)
+            else:
+                session = aiohttp.ClientSession()
+
+            async with session:
+                kwargs = {}
+                if config.PROXY_URL and not config.PROXY_URL.startswith("socks"):
+                    kwargs["proxy"] = config.PROXY_URL
+                async with session.post(url, **kwargs) as resp:
+                    resp_text = await resp.text()
+                    logger.info(f"Cookie webhook response (HTTP {resp.status}): {resp_text[:200]}")
+            
+            logger.info("Waiting 10 seconds for backend to generate cookies...")
+            await asyncio.sleep(10)
+            
+            # Re-download cookies
+            if config.COOKIES_URL or config.BROWSER_JSON_URL:
+                logger.info("Refreshing cookies after webhook trigger...")
+                await self.save_cookies(config.COOKIES_URL)
+        except Exception as e:
+            logger.error(f"Failed to trigger cookie webhook: {e}")
+
     async def save_cookies(self, urls: list[str]) -> None:
         logger.info("Saving cookies/auth...")
         
@@ -418,19 +461,26 @@ class YouTube:
                         if info and 'entries' in info and info['entries']:
                             entry = info['entries'][0]
                             video_id = entry.get('id')
+                            is_live = bool(entry.get("is_live") or entry.get("live_status") == "is_live" or entry.get("is_live") == True)
+                            
                             if attempt > 0:
                                 logger.info(f"✅ yt-dlp search succeeded ({label})")
+                            
+                            duration = "🔴 LIVE" if is_live else str(entry.get('duration', "0:00"))
+                            duration_sec = 0 if is_live else int(entry.get('duration', 0) or 0)
+                            
                             return Track(
                                 id=video_id,
                                 channel_name=entry.get('uploader', 'Unknown'),
-                                duration=str(entry.get('duration', "0:00")),
-                                duration_sec=int(entry.get('duration', 0) or 0),
+                                duration=duration,
+                                duration_sec=duration_sec,
                                 message_id=m_id,
                                 title=entry.get('title', 'Unknown Title')[:50],
                                 thumbnail=None,
                                 url=f"https://www.youtube.com/watch?v={video_id}",
                                 view_count=str(entry.get('view_count', '')),
                                 video=video,
+                                is_live=is_live,
                             )
                 finally:
                     if not use_proxy:
@@ -464,6 +514,7 @@ class YouTube:
                     # Retry with fallback cookie if Sign in error or SSL handshake drop
                     err_str = str(ex)
                     if "Sign in to confirm" in err_str or "UNEXPECTED_EOF" in err_str or "SSL" in err_str:
+                        await self.trigger_cookie_webhook()
                         fallback = self._get_fallback_cookie()
                         if fallback:
                             logger.warning("_generic_search: Primary cookie failed. Retrying with fallback...")
@@ -540,23 +591,28 @@ class YouTube:
                 logger.info(f"Non-YouTube source ({extractor}) - using full URL for download")
 
             # Get duration from yt-dlp (returns seconds) and format it
-            duration_sec = int(info.get("duration", 0) or 0)
-
-            # Fallback: if duration is 0 (common for direct URLs), try ffprobe
-            if duration_sec == 0:
-                duration_sec = await utils.get_duration(url)
-                logger.info(f"Refetched duration via ffprobe: {duration_sec}s")
-
-            if duration_sec:
-                hours = duration_sec // 3600
-                mins = (duration_sec % 3600) // 60
-                secs = duration_sec % 60
-                if hours > 0:
-                    duration = f"{hours}:{mins:02d}:{secs:02d}"
-                else:
-                    duration = f"{mins}:{secs:02d}"
+            is_live = bool(info.get("is_live") or info.get("live_status") == "is_live" or info.get("is_live") == True)
+            
+            if is_live:
+                duration = "🔴 LIVE"
+                duration_sec = 0
             else:
-                duration = "0:00"
+                duration_sec = int(info.get("duration", 0) or 0)
+                # Fallback: if duration is 0 (common for direct URLs), try ffprobe
+                if duration_sec == 0:
+                    duration_sec = await utils.get_duration(url)
+                    logger.info(f"Refetched duration via ffprobe: {duration_sec}s")
+
+                if duration_sec:
+                    hours = duration_sec // 3600
+                    mins = (duration_sec % 3600) // 60
+                    secs = duration_sec % 60
+                    if hours > 0:
+                        duration = f"{hours}:{mins:02d}:{secs:02d}"
+                    else:
+                        duration = f"{mins}:{secs:02d}"
+                else:
+                    duration = "0:00"
 
             return Track(
                 id=track_id,  # Use full URL for non-YouTube, short ID for YouTube
@@ -570,6 +626,7 @@ class YouTube:
                 view_count=str(info.get("view_count", "")),
                 video=video,
                 req_type=req_type,  # Set req_type for autoplay eligibility
+                is_live=is_live,
             )
         except Exception as e:
             logger.error(f"Generic search failed: {e}")
@@ -774,25 +831,31 @@ class YouTube:
             logger.error(f"yt-dlp: {msg}")
 
     async def download(self, video_id: str, video: bool = False) -> str | None:
+        suffix = "_video" if video else "_audio"
         if video_id.startswith("http"):
             url = video_id
             # Use MD5 hash of URL for safer and unique filenames
             import hashlib
             safe_id = hashlib.md5(url.encode()).hexdigest()
-            file_name_base = safe_id
+            file_name_base = f"{safe_id}{suffix}"
         else:
             url = self.base + video_id
-            file_name_base = video_id
+            file_name_base = f"{video_id}{suffix}"
+            safe_id = None
             
         os.makedirs("downloads", exist_ok=True)
 
-
-        # Check for existing file with any common extension
-
-        for ext in [".mp4", ".mkv", ".webm", ".m4a", ".mp3"]:
-             path = f"downloads/{file_name_base}{ext}"
-             if Path(path).exists():
-                 return path
+        # Check for existing file with appropriate suffix
+        # If video is requested, we can only reuse a _video file.
+        # If audio is requested, we can reuse a _video file (since it has audio) OR an _audio file.
+        suffixes_to_check = ["_video"] if video else ["_video", "_audio"]
+        for suf in suffixes_to_check:
+            base = f"{video_id}{suf}" if not video_id.startswith("http") else f"{safe_id}{suf}"
+            for ext in [".mp4", ".mkv", ".webm", ".m4a", ".mp3"]:
+                path = f"downloads/{base}{ext}"
+                if Path(path).exists():
+                    logger.info(f"💾 Reusing existing cached file: {path}")
+                    return path
 
         # ---------------------------------------------------------
         # yt-dlp Download (Primary Method)
@@ -829,6 +892,7 @@ class YouTube:
                 "audio_multistreams": True, # Keep all audio tracks
             }
 
+        loop = asyncio.get_running_loop()
         def _download():
             logger.info(f"Starting download for {url}")
             try:
@@ -873,6 +937,8 @@ class YouTube:
                     # Check for Sign in or SSL drop error and retry with fallback
                     err_str = str(ex)
                     if "Sign in to confirm" in err_str or "UNEXPECTED_EOF" in err_str or "SSL" in err_str:
+                        fut = asyncio.run_coroutine_threadsafe(self.trigger_cookie_webhook(), loop)
+                        fut.result() # block thread until coroutine completes
                         fallback = self._get_fallback_cookie()
                         
                         if fallback:
@@ -983,12 +1049,14 @@ class YouTube:
         """
         # Check if file exists locally in cache
         if not video_id.startswith("http"):
-            file_name_base = video_id
-            for ext in [".mp4", ".mkv", ".webm", ".m4a", ".mp3"]:
-                path = f"downloads/{file_name_base}{ext}"
-                if os.path.exists(path) and os.path.getsize(path) > 0:
-                    logger.info(f"💾 Found local cached file for {video_id}, playing locally.")
-                    return path
+            suffixes_to_check = ["_video"] if video else ["_video", "_audio"]
+            for suf in suffixes_to_check:
+                file_name_base = f"{video_id}{suf}"
+                for ext in [".mp4", ".mkv", ".webm", ".m4a", ".mp3"]:
+                    path = f"downloads/{file_name_base}{ext}"
+                    if os.path.exists(path) and os.path.getsize(path) > 0:
+                        logger.info(f"💾 Found local cached file for {video_id} ({suf[1:]}), playing locally.")
+                        return path
 
         if video_id.startswith("http"):
             url = video_id
@@ -1066,6 +1134,7 @@ class YouTube:
                 except Exception as ex:
                     # Retry with fallback cookie if Sign in error
                     if "Sign in to confirm" in str(ex):
+                        await self.trigger_cookie_webhook()
                         fallback = self._get_fallback_cookie()
                         if fallback:
                             logger.warning("get_stream_url: Primary cookie failed. Retrying with fallback...")

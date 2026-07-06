@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pyrogram import filters, types
 
-from bot import anon, app, config, db, lang, queue, tg, userbot, yt
+from bot import anon, app, config, db, lang, queue, tg, userbot, yt, logger
 from bot.helpers import buttons, utils
 from bot.helpers._play import checkUB, join_assistant
 
@@ -134,9 +134,9 @@ async def play_hndlr(
         if not file:
             return await sent.edit_text(m.lang["play_usage"])
         
-        # Block m3u8 live streams only (not Telegram files with unknown duration)
+        # Block m3u8 live streams only (not Telegram files with unknown duration or supported live streams)
         # Telegram files can have duration_sec=0 if metadata isn't available
-        if m3u8 and not file.duration_sec:
+        if m3u8 and not file.duration_sec and not getattr(file, "is_live", False):
             return await sent.edit_text(m.lang["play_unsupported"])
 
         if await db.is_logger():
@@ -198,26 +198,35 @@ async def play_hndlr(
     # Lock released here. Proceed to download/play
     try:
         if not file.file_path:
-            # Check for any existing file with this ID regardless of extension
-            search_path = Path(f"downloads/{file.id}.*")
-            found_files = list(Path("downloads").glob(f"{file.id}.*"))
+            # Check for existing cache files with suffix based on video vs audio
+            suffixes = ["_video"] if video else ["_video", "_audio"]
+            found_path = None
+            for suffix in suffixes:
+                found_files = list(Path("downloads").glob(f"{file.id}{suffix}.*"))
+                if found_files:
+                    found_path = str(found_files[0])
+                    break
             
-            if found_files:
-                file.file_path = str(found_files[0])
+            if found_path:
+                file.file_path = found_path
             else:
                 # Use direct streaming or download based on config
-                if config.ENABLE_DIRECT_STREAMING and file.req_type != "telegram" and not file.url.startswith("t.me") and not video:
+                is_live = getattr(file, "is_live", False)
+                if is_live or (config.ENABLE_DIRECT_STREAMING and file.req_type != "telegram" and not file.url.startswith("t.me") and not video):
                     # Direct streaming for YouTube/external URLs
-                    await sent.edit_text("🔎 Loading Stream...")
+                    await sent.edit_text("📡 Connecting to Live Stream..." if is_live else "🔎 Loading Stream...")
                     try:
-                        quality = await db.get_quality(chat_id)
+                        quality = await db.get_quality(m.chat.id)
                         file.file_path = await yt.get_stream_url(file.id, video=video, quality=quality)
-                        if not file.file_path:
+                        if not file.file_path and not is_live:
                             # Fallback to download if streaming fails
                             file.file_path = await yt.download(file.id, video=video)
                     except Exception as e:
-                        # Fallback to download on any error
-                        file.file_path = await yt.download(file.id, video=video)
+                        if not is_live:
+                            # Fallback to download on any error
+                            file.file_path = await yt.download(file.id, video=video)
+                        else:
+                            logger.error(f"Failed to connect to live stream: {e}")
                 else:
                     # Download for Telegram files or if streaming disabled
                     await sent.edit_text(m.lang["play_downloading"])

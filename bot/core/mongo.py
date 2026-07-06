@@ -418,7 +418,7 @@ class MongoDB:
     async def get_vc_logger_enabled(self, chat_id: int) -> bool:
         """Get whether VC logger is enabled for a specific chat. Default: True"""
         doc = await self.db.vc_logger.find_one({"_id": chat_id})
-        return doc["enabled"] if doc else True
+        return doc["enabled"] if doc else False
 
     # PLAY MODE METHODS
     async def get_play_mode(self, chat_id: int) -> bool:
