@@ -35,13 +35,8 @@ RUN curl -L -o wireproxy_linux_amd64.tar.gz https://github.com/whyvl/wireproxy/r
 
 
 # Install Python deps
-COPY requirements.txt ./
-RUN pip install -U pip && pip install -U -r requirements.txt
-RUN pip install --upgrade py-tgcalls
+COPY requirements-freez.txt ./
+RUN pip install -U pip && pip install -U -r requirements-freez.txt
 COPY . /app
 RUN chmod +x entrypoint.sh
-
-# # Ports for Hugging Face
-# EXPOSE 7860
-
 CMD ["./entrypoint.sh"]
