@@ -2,6 +2,10 @@
 # Licensed under the MIT License.
 # This file is part of happybot
 
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 # Patch httpx to support 'proxies' keyword argument for backward compatibility with youtube-search-python
 import httpx
 
