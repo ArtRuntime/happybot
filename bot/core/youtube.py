@@ -188,49 +188,6 @@ class YouTube:
         return None
 
 
-    async def trigger_cookie_webhook(self) -> None:
-        """Send a POST request to COOKIE_WEBHOOK_BACKEND_URL to trigger cookie generation,
-        then wait 10 seconds and re-download/refresh cookies."""
-        url = getattr(config, 'COOKIE_WEBHOOK_BACKEND_URL', None)
-        if not url:
-            logger.info("COOKIE_WEBHOOK_BACKEND_URL is not configured.")
-            return
-
-        import time
-        now = time.time()
-        if now - getattr(self, '_last_webhook_trigger', 0) < 300:
-            logger.info("Cookie webhook triggered recently, skipping to avoid spamming.")
-            return
-        self._last_webhook_trigger = now
-
-        logger.info(f"Triggering cookie generation via webhook: {url}")
-        try:
-            # We can use aiohttp to send a POST request
-            if config.PROXY_URL and config.PROXY_URL.startswith("socks"):
-                from aiohttp_socks import ProxyConnector
-                connector = ProxyConnector.from_url(config.PROXY_URL)
-                session = aiohttp.ClientSession(connector=connector)
-            else:
-                session = aiohttp.ClientSession()
-
-            async with session:
-                kwargs = {}
-                if config.PROXY_URL and not config.PROXY_URL.startswith("socks"):
-                    kwargs["proxy"] = config.PROXY_URL
-                async with session.post(url, **kwargs) as resp:
-                    resp_text = await resp.text()
-                    logger.info(f"Cookie webhook response (HTTP {resp.status}): {resp_text[:200]}")
-            
-            logger.info("Waiting 10 seconds for backend to generate cookies...")
-            await asyncio.sleep(10)
-            
-            # Re-download cookies
-            if config.COOKIES_URL or config.BROWSER_JSON_URL:
-                logger.info("Refreshing cookies after webhook trigger...")
-                await self.save_cookies(config.COOKIES_URL)
-        except Exception as e:
-            logger.error(f"Failed to trigger cookie webhook: {e}")
-
     async def save_cookies(self, urls: list[str]) -> None:
         logger.info("Saving cookies/auth...")
         
@@ -514,7 +471,6 @@ class YouTube:
                     # Retry with fallback cookie if Sign in error or SSL handshake drop
                     err_str = str(ex)
                     if "Sign in to confirm" in err_str or "UNEXPECTED_EOF" in err_str or "SSL" in err_str:
-                        await self.trigger_cookie_webhook()
                         fallback = self._get_fallback_cookie()
                         if fallback:
                             logger.warning("_generic_search: Primary cookie failed. Retrying with fallback...")
@@ -892,7 +848,6 @@ class YouTube:
                 "audio_multistreams": True, # Keep all audio tracks
             }
 
-        loop = asyncio.get_running_loop()
         def _download():
             logger.info(f"Starting download for {url}")
             try:
@@ -937,8 +892,6 @@ class YouTube:
                     # Check for Sign in or SSL drop error and retry with fallback
                     err_str = str(ex)
                     if "Sign in to confirm" in err_str or "UNEXPECTED_EOF" in err_str or "SSL" in err_str:
-                        fut = asyncio.run_coroutine_threadsafe(self.trigger_cookie_webhook(), loop)
-                        fut.result() # block thread until coroutine completes
                         fallback = self._get_fallback_cookie()
                         
                         if fallback:
@@ -1134,7 +1087,6 @@ class YouTube:
                 except Exception as ex:
                     # Retry with fallback cookie if Sign in error
                     if "Sign in to confirm" in str(ex):
-                        await self.trigger_cookie_webhook()
                         fallback = self._get_fallback_cookie()
                         if fallback:
                             logger.warning("get_stream_url: Primary cookie failed. Retrying with fallback...")
