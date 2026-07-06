@@ -28,4 +28,5 @@ emoji
 telegraph
 hachoir
 pySmartDL
+socksio
 
