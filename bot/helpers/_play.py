@@ -90,9 +90,22 @@ async def join_assistant(m: types.Message, chat_id: int):
                 )
         except Exception as ex:
             logger.error(f"Error joining chat - {chat_id}: {ex}")
-            return await umm.edit_text(
-                m.lang["play_invite_error"].format(type(ex).__name__)
-            )
+            from pyrogram.errors import AuthKeyUnregistered, ChannelInvalid
+            from bot import userbot
+            if isinstance(ex, AuthKeyUnregistered) or "401 AUTH_KEY_UNREGISTERED" in str(ex):
+                if 'client' in locals() and hasattr(client, 'name'):
+                    await db.remove_session(client.name)
+                    await userbot.remove_client(client.name)
+                msg_text = "⚠️ **Assistant Session Expired!**\n\nThe assistant account has been logged out from Telegram. I have removed it from the database. Please add a new assistant using /login in my PM."
+            elif isinstance(ex, ChannelInvalid) or "CHANNEL_INVALID" in str(ex):
+                msg_text = "⚠️ **Invalid Chat/Channel!**\n\nThe provided chat/channel is invalid or inaccessible to the assistant."
+            else:
+                msg_text = m.lang["play_invite_error"].format(type(ex).__name__)
+
+            if 'umm' in locals():
+                return await umm.edit_text(msg_text)
+            else:
+                return await m.reply_text(msg_text)
 
         await umm.delete()
         await client.resolve_peer(chat_id)

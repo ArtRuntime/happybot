@@ -392,6 +392,15 @@ class TgCall(PyTgCalls):
             
         except Exception as e:
             err_str = str(e)
+            from pyrogram.errors import AuthKeyUnregistered
+            from bot import userbot
+            if isinstance(e, AuthKeyUnregistered) or "401 AUTH_KEY_UNREGISTERED" in err_str:
+                logger.error(f"Connection check detected unregistered userbot client: {e}")
+                if 'session_name' in locals() and session_name:
+                    await db.remove_session(session_name)
+                    await userbot.remove_client(session_name)
+                return False
+                
             if "FLOOD_WAIT" in err_str:
                 logger.warning(f"FloodWait during connection check for {chat_id}: {e}")
                 # Assume True to avoid compounding the flood wait
@@ -399,7 +408,7 @@ class TgCall(PyTgCalls):
             
             logger.error(f"Failed to check participant status in {chat_id}: {e}")
             # If we get a specific error like 'GROUPCALL_FORBIDDEN', return False effectively
-            if "GROUPCALL_FORBIDDEN" in err_str:
+            if "GROUPCALL_FORBIDDEN" in err_str or "CHANNEL_INVALID" in err_str:
                  return False
             # Otherwise assume True to avoid loops
             return True
@@ -894,6 +903,20 @@ class TgCall(PyTgCalls):
             await self.stop(chat_id)
             await message.edit_text(_lang["error_rtmp"])
         except Exception as e:
+            from pyrogram.errors import AuthKeyUnregistered
+            from bot import userbot
+            if isinstance(e, AuthKeyUnregistered) or "401 AUTH_KEY_UNREGISTERED" in str(e):
+                logger.error(f"Play Media detected unregistered userbot client: {e}")
+                session_name = db.assistant.get(chat_id)
+                if session_name:
+                    await db.remove_session(session_name)
+                    await userbot.remove_client(session_name)
+                try:
+                    await message.edit_text("⚠️ **Assistant Session Expired!**\n\nThe assistant account has been logged out from Telegram. I have removed it from the database. Please add a new assistant using /login in my PM.")
+                except:
+                    pass
+                return await self.stop(chat_id)
+
             logger.error(f"Play Media Error: {e}", exc_info=True)
             try:
                 await message.edit_text(f"❌ Error: {e}")

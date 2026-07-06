@@ -85,7 +85,16 @@ async def get_vc_participants(chat_id: int):
         return participants
         
     except Exception as e:
-        logger.error(f"Failed to fetch VC participants for {chat_id}: {e}")
+        from pyrogram.errors import AuthKeyUnregistered, ChannelInvalid
+        if isinstance(e, AuthKeyUnregistered) or "401 AUTH_KEY_UNREGISTERED" in str(e):
+            logger.error(f"VC Logger detected unregistered client: {e}")
+            if 'ub' in locals() and hasattr(ub, 'name'):
+                await db.remove_session(ub.name)
+                await userbot.remove_client(ub.name)
+        elif isinstance(e, ChannelInvalid) or "CHANNEL_INVALID" in str(e):
+            logger.warning(f"VC Logger: Chat/Channel {chat_id} is invalid or inaccessible to the assistant.")
+        else:
+            logger.error(f"Failed to fetch VC participants for {chat_id}: {e}")
         return set()
 
 

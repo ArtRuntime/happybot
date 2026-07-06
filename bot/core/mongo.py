@@ -226,7 +226,11 @@ class MongoDB:
         name = self.assistant[chat_id]
         
         # Ensure client is started (Lazy Load)
-        await userbot.get_client_by_name(name)
+        try:
+            await userbot.get_client_by_name(name)
+        except Exception:
+            self.assistant.pop(chat_id, None)
+            raise
         
         # Get PyTgCalls client
         from bot import anon

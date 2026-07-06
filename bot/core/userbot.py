@@ -39,10 +39,18 @@ class Userbot(Client):
             return self._client_map[name]
         
         client = await self._create_client(session_string, name)
-        await client.start()
+        try:
+            await client.start()
+            me = await client.get_me()
+        except Exception as e:
+            from pyrogram.errors import AuthKeyUnregistered
+            if isinstance(e, AuthKeyUnregistered) or "401 AUTH_KEY_UNREGISTERED" in str(e):
+                from bot import db
+                logger.error(f"Session '{name}' is unregistered/logged out. Removing it from database.")
+                await db.remove_session(name)
+                raise ValueError(f"Session '{name}' is unregistered (401 AuthKeyUnregistered)")
+            raise
         
-        # Set client properties first
-        me = await client.get_me()
         client.id = me.id
         client.name = name  # Use our internal name
         client.user_name = me.first_name # Telegram name
@@ -160,7 +168,7 @@ class Userbot(Client):
 
     async def _setup_log_group(self, client: Client):
         """Helper to invite assistant to logs group and send startup message."""
-        if not config.LOGGER_ID:
+        if not config.LOGGER_ID or config.LOGGER_ID > 0:
             return
             
         # Avoid duplicate setup/messages

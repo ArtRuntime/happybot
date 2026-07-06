@@ -50,12 +50,17 @@ class Bot(pyrogram.Client):
 
         try:
             await self.send_message(self.logger, "Bot Started")
-            get = await self.get_chat_member(self.logger, self.id)
+            if str(self.logger).startswith("-"):
+                get = await self.get_chat_member(self.logger, self.id)
+                if get.status != pyrogram.enums.ChatMemberStatus.ADMINISTRATOR:
+                    raise SystemExit("Please promote the bot as an admin in logger group.")
+        except SystemExit:
+            raise
         except Exception as ex:
-            raise SystemExit(f"Bot has failed to access the log group: {self.logger}\nReason: {ex}")
-
-        if get.status != pyrogram.enums.ChatMemberStatus.ADMINISTRATOR:
-            raise SystemExit("Please promote the bot as an admin in logger group.")
+            if str(self.logger).startswith("-"):
+                raise SystemExit(f"Bot has failed to access the log group: {self.logger}\nReason: {ex}")
+            else:
+                logger.warning(f"Bot failed to send startup log message to user {self.logger}: {ex}")
         logger.info(f"Bot started as @{self.username}")
 
     async def exit(self):

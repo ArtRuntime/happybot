@@ -14,8 +14,8 @@ class Config:
         self.REDIS_URL = getenv("REDIS_URL")
         self.REDIS_PREFIX = getenv("REDIS_PREFIX", "happybot-")
 
-        self.LOGGER_ID = int(getenv("LOGGER_ID", 0))
         self.OWNER_ID = int(getenv("OWNER_ID", 0))
+        self.LOGGER_ID = int(getenv("LOGGER_ID", 0)) or self.OWNER_ID
 
         self.DURATION_LIMIT = int(getenv("DURATION_LIMIT", 60)) * 60
         self.QUEUE_LIMIT = int(getenv("QUEUE_LIMIT", 20))
@@ -77,7 +77,7 @@ class Config:
     def check(self):
         missing = [
             var
-            for var in ["API_ID", "API_HASH", "BOT_TOKEN", "MONGO_URL", "LOGGER_ID", "OWNER_ID"]
+            for var in ["API_ID", "API_HASH", "BOT_TOKEN", "MONGO_URL", "OWNER_ID"]
             if not getattr(self, var)
         ]
         if missing:
