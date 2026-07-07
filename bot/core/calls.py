@@ -857,6 +857,14 @@ class TgCall(PyTgCalls):
                 except Exception as e:
                     logger.error(f"Failed to delete corrupted file: {e}")
 
+            # Clear stream cache to force a fresh URL resolve (since current cached URL failed)
+            if media.id and not media.id.startswith("http"):
+                try:
+                    await db.stream_cache.delete_one({"_id": media.id})
+                    logger.info(f"Cleared stream cache for {media.id} after failure")
+                except Exception as e:
+                    logger.error(f"Failed to clear stream cache: {e}")
+
             # 2. Check retry limit (prevent infinite loops)
             if self._consecutive_failures[chat_id] > 2:
                 self._consecutive_failures[chat_id] = 0
@@ -877,18 +885,19 @@ class TgCall(PyTgCalls):
                 # Re-fetch media (Stream OR Download)
                 # We reuse the logic from play_next/prepare
                 
+                # If we've failed at least once (i.e. consecutive_failures >= 1) and we are not playing video,
+                # use video as fallback (download or stream the video format to extract audio)
+                use_video_fallback = (self._consecutive_failures[chat_id] >= 1 and not media.video)
+                
                 # Try direct stream if applicable
-                if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me") and not media.video:
+                if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
                      quality = await db.get_quality(chat_id)
-                     media.file_path = await yt.get_stream_url(media.id, video=media.video, quality=quality)
+                     media.file_path = await yt.get_stream_url(media.id, video=(media.video or use_video_fallback), quality=quality)
                      if not media.file_path:
-                         # If this is Attempt 3, fall back to downloading video format for audio track
-                         use_video_fallback = (self._consecutive_failures[chat_id] >= 2)
-                         media.file_path = await yt.download(media.id, video=use_video_fallback)
+                          # Fallback to download
+                          media.file_path = await yt.download(media.id, video=(media.video or use_video_fallback))
                 else:
                      # Fallback to download
-                     # If this is Attempt 3, fall back to downloading video format for audio track
-                     use_video_fallback = (self._consecutive_failures[chat_id] >= 2 and not media.video)
                      media.file_path = await yt.download(media.id, video=(media.video or use_video_fallback))
                 
                 if media.file_path:
