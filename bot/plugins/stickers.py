@@ -270,25 +270,6 @@ async def kang_sticker(client, message):
         
         if packname_found:
             await prog_msg.edit("Adding to existing pack...")
-            await client.invoke(
-                AddStickerToSet(
-                    stickerset=InputStickerSetShortName(short_name=packname),
-                    sticker=InputStickerSetItem(
-                        document=InputDocument(
-                            id=stkr_file.file_id, # Pyrogram Document object has file_id as str? 
-                            # Wait, InputDocument needs id (int), access_hash (int), file_reference (bytes)
-                            # Pyrogram Document.file_id is a file_id string.
-                            # We need to decode it or use raw object if available?
-                            # uploaded_msg.document IS a pyrogram type.
-                            # We can use FileId.decode(stkr_file.file_id)
-                        ),
-                        emoji=sticker_emoji,
-                    ),
-                )
-            )
-            # WAIT: InputDocument requires raw ID. 
-            # `stkr_file` from `send_document` is a Pyrogram Object.
-            # We need to decode `stkr_file.file_id`.
             
             decoded = FileId.decode(stkr_file.file_id)
             input_doc = InputDocument(

@@ -26,17 +26,40 @@ async def draw_meme_text(image_path, text, font_size_option="large"):
     # Font handling
     font_path = "assets/impact.ttf"
     if not os.path.exists(font_path):
-        # Fallback to system font
-        font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-        if not os.path.exists(font_path):
-             font_path = None # Default
+        import glob
+        fallback_paths = [
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
+        ]
+        for path in fallback_paths:
+            if os.path.exists(path):
+                font_path = path
+                break
+        else:
+            found_fonts = glob.glob("/usr/share/fonts/**/*.ttf", recursive=True)
+            if found_fonts:
+                font_path = found_fonts[0]
+            else:
+                font_path = None
              
+    if ";" in text:
+        upper_text, lower_text = text.split(";", 1)
+    else:
+        upper_text = text
+        lower_text = ""
+
+    lines_upper = textwrap.wrap(upper_text, width=15) if upper_text else []
+    lines_lower = textwrap.wrap(lower_text, width=15) if lower_text else []
+    all_lines = lines_upper + lines_lower
+
     if font_path:
         # Determine font size based on user preference
         size_presets = {
-            "small": (150 / 640, 40),    # ratio, minimum
-            "medium": (200 / 640, 50),
-            "large": (250 / 640, 60),
+            "small": (0.07, 25),    # ratio, minimum
+            "medium": (0.10, 35),
+            "large": (0.13, 45),
         }
         
         # Check if it's a preset or custom number
@@ -48,21 +71,28 @@ async def draw_meme_text(image_path, text, font_size_option="large"):
             # Try to parse as custom pixel value
             try:
                 font_size = int(font_size_option)
-                font_size = max(20, min(500, font_size))  # Clamp between 20-500px
+                font_size = max(10, min(500, font_size))  # Clamp between 10-500px
             except ValueError:
                 # Default to large if invalid
-                font_size = int((250 / 640) * i_width)
-                font_size = max(60, font_size)
+                font_size = int(0.13 * i_width)
+                font_size = max(45, font_size)
         
         m_font = ImageFont.truetype(font_path, font_size)
+        # Dynamically scale font size down if any line exceeds 90% of image width
+        while font_size > 12:
+            m_font = ImageFont.truetype(font_path, font_size)
+            fits = True
+            for line in all_lines:
+                bbox = m_font.getbbox(line)
+                w = bbox[2] - bbox[0]
+                if w > i_width * 0.90:
+                    fits = False
+                    break
+            if fits:
+                break
+            font_size -= 4
     else:
         m_font = ImageFont.load_default()
-
-    if ";" in text:
-        upper_text, lower_text = text.split(";", 1)
-    else:
-        upper_text = text
-        lower_text = ""
 
     draw = ImageDraw.Draw(img)
     
@@ -78,9 +108,8 @@ async def draw_meme_text(image_path, text, font_size_option="large"):
 
     # Draw Upper Text
     current_h = 10
-    if upper_text:
-        lines = textwrap.wrap(upper_text, width=15)
-        for line in lines:
+    if lines_upper:
+        for line in lines_upper:
             bbox = m_font.getbbox(line)
             w = bbox[2] - bbox[0]
             h = bbox[3] - bbox[1]
@@ -91,13 +120,11 @@ async def draw_meme_text(image_path, text, font_size_option="large"):
             current_h += h + 5
 
     # Draw Lower Text
-    current_h = i_height - 20 # Start from bottom
-    if lower_text:
-        lines = textwrap.wrap(lower_text, width=15)
+    if lines_lower:
         # Calculate total height to position correctly
         total_h = 0
         line_heights = []
-        for line in lines:
+        for line in lines_lower:
              bbox = m_font.getbbox(line)
              h = bbox[3] - bbox[1]
              total_h += h + 5
@@ -105,7 +132,7 @@ async def draw_meme_text(image_path, text, font_size_option="large"):
              
         current_y = i_height - total_h - 10
         
-        for i, line in enumerate(lines):
+        for i, line in enumerate(lines_lower):
              bbox = m_font.getbbox(line)
              w = bbox[2] - bbox[0]
              x = (i_width - w) / 2
@@ -120,13 +147,24 @@ async def draw_meme_text(image_path, text, font_size_option="large"):
 @app.on_message(filters.command(["memify", "mmf"]) & filters.group)
 @capture_err
 async def memify_cmd(client, message):
+    if not message.from_user:
+        return
+        
     if not message.reply_to_message:
-        return await message.reply_text("Reply to a sticker or photo.")
+        return await message.reply_text("Reply to a sticker, photo, video, or animation.")
         
     reply = message.reply_to_message
     
-    if not (reply.sticker or reply.photo):
-         return await message.reply_text("Reply to a sticker or photo.")
+    is_valid_media = (
+        reply.sticker or 
+        reply.photo or 
+        reply.animation or 
+        reply.video or 
+        (reply.document and getattr(reply.document, "file_name", "").lower().endswith((".webm", ".mp4", ".mkv", ".gif")))
+    )
+    
+    if not is_valid_media:
+         return await message.reply_text("Reply to a sticker, photo, video, animation or webm/mp4 document.")
          
     if len(message.command) < 2:
          return await message.reply_text(
@@ -145,11 +183,31 @@ async def memify_cmd(client, message):
     else:
         text = args
         size_option = "large"  # default
+        
+    text = text.strip()
+    if len(text) >= 2 and (
+        (text.startswith('"') and text.endswith('"')) or
+        (text.startswith("'") and text.endswith("'"))
+    ):
+        text = text[1:-1]
     
     msg = await message.reply_text("Processing meme...")
     
     try:
         file_path = await reply.download()
+        if not file_path:
+            raise Exception("Failed to download media.")
+            
+        if file_path.lower().endswith((".webm", ".mp4", ".mkv", ".gif")):
+            jpg_path = file_path + ".jpg"
+            from bot.helpers.feds_utils import take_ss
+            converted = await take_ss(file_path, jpg_path)
+            if converted and os.path.exists(jpg_path):
+                os.remove(file_path)
+                file_path = jpg_path
+            else:
+                raise Exception("Failed to extract frame from video/animation.")
+                
         output = await draw_meme_text(file_path, text, size_option)
         
         await message.reply_sticker(output)
