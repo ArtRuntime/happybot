@@ -4,6 +4,8 @@ from bot import app, db
 @app.on_message(filters.command("autoleave"))
 async def toggle_auto_leave(_, message: types.Message):
     """Toggle auto-leave for current chat. Sudo only."""
+    if not message.from_user:
+        return
     user_id = message.from_user.id
     
     # Restrict to sudo users only

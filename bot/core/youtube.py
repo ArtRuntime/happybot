@@ -1187,18 +1187,6 @@ class YouTube:
                     self.cookies.remove(cookie)
                 except:
                     pass
-            if cookie:
-                try:
-                    self.cookies.remove(cookie)
-                except:
-                    pass
-
-        if not video_id.startswith("http"):
-            if cookie:
-                try:
-                    self.cookies.remove(cookie)
-                except:
-                    pass
 
         return None
 

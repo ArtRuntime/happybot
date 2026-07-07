@@ -14,6 +14,8 @@ Monitor user name/username changes in the chat.
 @app.on_message(filters.command(["sangmata", "sangmata_set"]) & filters.group)
 @capture_err
 async def sangmata_set(client, message):
+    if not message.from_user:
+        return
     if len(message.command) < 2:
         return await message.reply_text("Usage: /sangmata [on/off]")
         

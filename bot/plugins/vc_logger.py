@@ -185,6 +185,9 @@ async def vclogger_command(client, message):
     Enable/Disable Voice Chat Logger for this chat.
     Usage: /vclogger [on/off]
     """
+    if not message.from_user:
+        return
+        
     chat_id = message.chat.id
     
     # Check permissions (Admin or Sudo)

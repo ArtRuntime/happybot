@@ -28,6 +28,8 @@ Expected button format: <code>Text</code>~<code>[Button Name, Link/Callback]</co
 @app.on_message(filters.command(["addfilter", "filter"]) & filters.group)
 @capture_err
 async def save_filters_handler(client, message):
+    if not message.from_user:
+        return
     chat_id = message.chat.id
     user_id = message.from_user.id
     
@@ -130,6 +132,8 @@ async def get_filterss(client, message):
 @app.on_message(filters.command(["stop", "stopfilter"]) & filters.group)
 @capture_err
 async def del_filter(client, message):
+    if not message.from_user:
+        return
     if len(message.command) < 2:
         return await message.reply_text("<b>Usage:</b>\n__/stop [FILTER_NAME]__")
         
@@ -154,6 +158,8 @@ async def del_filter(client, message):
 @app.on_message(filters.command("stopall") & filters.group)
 @capture_err
 async def stop_all(client, message):
+    if not message.from_user:
+        return
     chat_id = message.chat.id
     user_id = message.from_user.id
     

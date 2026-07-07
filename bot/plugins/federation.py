@@ -143,6 +143,8 @@ async def del_fed_btn(client, cb):
 @app.on_message(filters.command("myfeds"))
 @capture_err
 async def myfeds(client, message):
+    if not message.from_user:
+        return
     user = message.from_user
     is_feds = await db.get_feds_by_owner(int(user.id))
 
@@ -163,6 +165,8 @@ async def myfeds(client, message):
 @app.on_message(filters.command("renamefed"))
 @capture_err
 async def rename_fed(client, message):
+    if not message.from_user:
+        return
     user = message.from_user
     msg = message
     args = msg.text.split(None, 2)
@@ -186,6 +190,8 @@ async def rename_fed(client, message):
 @app.on_message(filters.command(["setfedlog", "unsetfedlog"]))
 @capture_err
 async def fed_log(client, message):
+    if not message.from_user:
+        return
     chat = message.chat
     user = message.from_user
     if message.chat.type == ChatType.PRIVATE:
@@ -229,6 +235,8 @@ async def fed_log(client, message):
 @app.on_message(filters.command("chatfed"))
 @capture_err
 async def fed_chat(client, message):
+    if not message.from_user:
+        return
     chat = message.chat
     user = message.from_user
     fed_id = await db.get_fed_id(chat.id)
@@ -255,6 +263,8 @@ async def fed_chat(client, message):
 @app.on_message(filters.command("joinfed"))
 @capture_err
 async def join_fed(client, message):
+    if not message.from_user:
+        return
     chat = message.chat
     user = message.from_user
     if message.chat.type == ChatType.PRIVATE:
@@ -305,6 +315,8 @@ async def join_fed(client, message):
 @app.on_message(filters.command("leavefed"))
 @capture_err
 async def leave_fed(client, message):
+    if not message.from_user:
+        return
     chat = message.chat
     user = message.from_user
 
@@ -347,6 +359,8 @@ async def leave_fed(client, message):
 @app.on_message(filters.command("fedchats"))
 @capture_err
 async def fed_chats_list(client, message):
+    if not message.from_user:
+        return
     chat = message.chat
     user = message.from_user
     if message.chat.type != ChatType.PRIVATE:
@@ -472,6 +486,8 @@ async def get_all_fadmins_mentions(client, message):
 @app.on_message(filters.command("fpromote"))
 @capture_err
 async def fpromote(client, message):
+    if not message.from_user:
+        return
     chat = message.chat
     user = message.from_user
     msg = message
@@ -529,6 +545,8 @@ async def fpromote(client, message):
 @app.on_message(filters.command("fdemote"))
 @capture_err
 async def fdemote(client, message):
+    if not message.from_user:
+        return
     chat = message.chat
     user = message.from_user
     msg = message
@@ -572,6 +590,8 @@ async def fdemote(client, message):
 @app.on_message(filters.command(["fban", "sfban"]))
 @capture_err
 async def fban_user(client, message):
+    if not message.from_user:
+        return
     chat = message.chat
     from_user = message.from_user
     if message.chat.type == ChatType.PRIVATE:
@@ -674,6 +694,8 @@ async def fban_user(client, message):
 @app.on_message(filters.command(["unfban", "sunfban"]))
 @capture_err
 async def funban_user(client, message):
+    if not message.from_user:
+        return
     chat = message.chat
     from_user = message.from_user
     if message.chat.type == ChatType.PRIVATE:

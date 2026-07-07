@@ -99,11 +99,20 @@ async def create_quotly(messages, is_reply=False):
     for msg in messages:
         payload["messages"].append(await message_to_dict(msg, is_reply))
         
+    endpoints = [
+        "https://bot.lyo.su/quote/generate.png",
+        "https://quote.yuri.ly/generate.png"
+    ]
+    
     async with httpx.AsyncClient() as http:
-        resp = await http.post("https://quote.yuri.ly/generate.png", json=payload, timeout=20.0)
-        if resp.status_code != 200:
-            return None
-        return resp.content
+        for api_url in endpoints:
+            try:
+                resp = await http.post(api_url, json=payload, timeout=15.0)
+                if resp.status_code == 200:
+                    return resp.content
+            except Exception:
+                continue
+    return None
 
 @app.on_message(filters.command(["q", "quotly"]) & filters.group)
 @capture_err

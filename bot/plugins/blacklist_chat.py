@@ -19,6 +19,8 @@ __HELP__ = """
 @app.on_message(filters.command("blacklist") & filters.group)
 @capture_err
 async def save_filters(_, message):
+    if not message.from_user:
+        return
     if len(message.command) < 2:
         return await message.reply_text("Usage:\n/blacklist [WORD|SENTENCE]")
     
@@ -54,6 +56,8 @@ async def get_filterss(_, message):
 @app.on_message(filters.command("whitelist") & filters.group)
 @capture_err
 async def del_filter(_, message):
+    if not message.from_user:
+        return
     if len(message.command) < 2:
         return await message.reply_text("Usage:\n/whitelist [WORD|SENTENCE]")
         

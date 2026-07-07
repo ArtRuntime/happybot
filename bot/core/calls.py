@@ -28,6 +28,8 @@ class TgCall(PyTgCalls):
         self._unmute_keeper_tasks: dict[int, asyncio.Task] = {}  # Periodic unmute keeper
         self._connection_cache: dict[int, float] = {}  # Cache for successful connection checks
         self._last_rejoin: dict[int, float] = {}  # Timestamp of last rejoin per chat (cooldown)
+        self._preload_tasks: dict[int, asyncio.Task] = {}
+        self._preload_cancelled: set[int] = set()
 
     async def pause(self, chat_id: int) -> bool:
         client = await db.get_assistant(chat_id)
@@ -44,13 +46,17 @@ class TgCall(PyTgCalls):
         # Restart watchdog with remaining duration when resuming
         try:
             media = await queue.get_current(chat_id)
-            if media and hasattr(media, 'duration'):
-                import time
-                played_at = getattr(media, 'played_at', time.time())
-                elapsed = time.time() - played_at
-                remaining = max(0, media.duration - int(elapsed))
-                if remaining > 0:
-                    await self._start_watchdog(chat_id, remaining)
+            if media:
+                duration_sec = getattr(media, 'duration_sec', 0)
+                if not duration_sec and hasattr(media, 'duration'):
+                    duration_sec = utils.to_seconds(media.duration)
+                if duration_sec > 0:
+                    import time
+                    played_at = getattr(media, 'played_at', time.time())
+                    elapsed = time.time() - played_at
+                    remaining = max(0, duration_sec - int(elapsed))
+                    if remaining > 0:
+                        await self._start_watchdog(chat_id, remaining)
         except Exception as e:
             logger.error(f"Failed to restart watchdog on resume: {e}")
         
@@ -150,9 +156,7 @@ class TgCall(PyTgCalls):
         if chat_id in self._connection_cache:
             del self._connection_cache[chat_id]
 
-    # Track active preload tasks per chat
-    _preload_tasks: dict[int, asyncio.Task] = {}
-    _preload_cancelled: set[int] = set()
+
 
     async def _start_watchdog(self, chat_id: int, duration_sec: int) -> None:
         """Start a watchdog timer to auto-skip if stream gets stuck."""
@@ -477,8 +481,8 @@ class TgCall(PyTgCalls):
             else:
                 # Download for Telegram files or if streaming disabled
                 next_track.file_path = await yt.download(next_track.id, video=next_track.video)
-            
             # Check if cancelled after download (cleanup if needed)
+            if chat_id in self._preload_cancelled:
                 self._preload_cancelled.discard(chat_id)
                 if next_track.file_path and os.path.exists(next_track.file_path):
                     try:
@@ -619,6 +623,7 @@ class TgCall(PyTgCalls):
                 media.file_path = None
 
             if not media.file_path or not os.path.exists(media.file_path):
+                self._consecutive_failures[chat_id] += 1
                 await message.edit_text(_lang["error_no_file"].format(config.SUPPORT_CHAT))
                 return await self.play_next(chat_id)
 
@@ -1022,161 +1027,155 @@ class TgCall(PyTgCalls):
                 self._consecutive_failures[chat_id] = 0
                 return await self.stop(chat_id)
 
-        # Cleanup previous track
-        old_media = await queue.get_playing(chat_id)
-        if old_media:
-            # Disable buttons on previous song message
-            if hasattr(old_media, 'message_id') and old_media.message_id:
+            # Cleanup previous track
+            old_media = await queue.get_playing(chat_id)
+            if old_media:
+                # Disable buttons on previous song message
+                if hasattr(old_media, 'message_id') and old_media.message_id:
+                    try:
+                        await app.edit_message_reply_markup(
+                            chat_id=chat_id,
+                            message_id=old_media.message_id,
+                            reply_markup=None
+                        )
+                    except MessageNotModified:
+                        pass
+                    except Exception as e:
+                        logger.error(f"Failed to cleanup buttons for {old_media.title}: {e}")
+                
+                # Cleanup thumbnail
+                thumb_path = f"cache/{old_media.id}.png"
+                if os.path.exists(thumb_path):
+                    try:
+                        os.remove(thumb_path)
+                    except:
+                        pass
+
+            media = await queue.get_next(chat_id)
+            if media:
                 try:
-                    await app.edit_message_reply_markup(
-                        chat_id=chat_id,
-                        message_id=old_media.message_id,
-                        reply_markup=None
-                    )
-                except MessageNotModified:
-                    pass
-                except Exception as e:
-                    logger.error(f"Failed to cleanup buttons for {old_media.title}: {e}")
-            # We keep the file in cache now
-            # if old_media.file_path and os.path.exists(old_media.file_path):
-            #     try:
-            #         await asyncio.to_thread(os.remove, old_media.file_path)
-            #     except:
-            #         pass
-            
-            # Cleanup thumbnail
-            thumb_path = f"cache/{old_media.id}.png"
-            if os.path.exists(thumb_path):
-                try:
-                    os.remove(thumb_path)
+                    if media.message_id:
+                        await app.delete_messages(
+                            chat_id=chat_id,
+                            message_ids=media.message_id,
+                            revoke=True,
+                        )
+                        media.message_id = 0
                 except:
                     pass
 
-        media = await queue.get_next(chat_id)
-        try:
-            if media.message_id:
-                await app.delete_messages(
-                    chat_id=chat_id,
-                    message_ids=media.message_id,
-                    revoke=True,
-                )
-                media.message_id = 0
-        except:
-            pass
-
-        if not media:
-            # Autoplay ONLY for YouTube search and YouTube/YT Music URLs
-            # Everything else (Telegram files, playlists) = no autoplay
-            if old_media:
-                old_req_type = getattr(old_media, 'req_type', None)
-                
-                # Only allow autoplay for YouTube search, direct YouTube URLs, playlists, and previous autoplay tracks
-                if old_req_type not in ['search', 'youtube', 'autoplay', 'playlist']:
-                    logger.info(f"Skipping autoplay - req_type '{old_req_type}' not eligible for autoplay")
-                    return await self.stop(chat_id)
-                
-                # Check if autoplay enabled
-                mode = await db.get_autoplay(chat_id)
-                new_track = None
-                
-                if not mode:
-                    # Autoplay disabled - just stop
-                    return await self.stop(chat_id)
-
-                # Autoplay logic with TF-IDF smart mode
-                new_track = await yt.smart_autoplay(mode, previous_track=old_media)
-                
-                # Check if user added a song while we were fetching autoplay
-                # If yes, prioritize user song and discard/ignore the autoplay result
-                if await queue.get_queue(chat_id):
-                    logger.info(f"User added song during autoplay fetch in {chat_id} - Switching to user track")
-                    # Clear cancelled flag so new download can proceed
-                    yt.clear_cancelled(chat_id)
-                    media = await queue.get_next(chat_id)
-                elif new_track:
-                    # Add to queue
-                    await queue.add(chat_id, new_track)
-                    media = new_track # Set media to the new track
+            if not media:
+                # Autoplay ONLY for YouTube search and YouTube/YT Music URLs
+                # Everything else (Telegram files, playlists) = no autoplay
+                if old_media:
+                    old_req_type = getattr(old_media, 'req_type', None)
                     
-                    # Notify user about autoplay
-                    _lang = await lang.get_lang(chat_id)
-                    try:
-                        await app.send_message(
-                            chat_id=chat_id,
-                            text=f"<b>Autoplay:</b> Adding <i>{new_track.title}</i> to queue..."
-                        )
-                    except:
-                        pass
-                    # Do NOT recurse. Proceed to play loop below.
+                    # Only allow autoplay for YouTube search, direct YouTube URLs, playlists, and previous autoplay tracks
+                    if old_req_type not in ['search', 'youtube', 'autoplay', 'playlist']:
+                        logger.info(f"Skipping autoplay - req_type '{old_req_type}' not eligible for autoplay")
+                        return await self.stop(chat_id)
+                    
+                    # Check if autoplay enabled
+                    mode = await db.get_autoplay(chat_id)
+                    new_track = None
+                    
+                    if not mode:
+                        # Autoplay disabled - just stop
+                        return await self.stop(chat_id)
+
+                    # Autoplay logic with TF-IDF smart mode
+                    new_track = await yt.smart_autoplay(mode, previous_track=old_media)
+                    
+                    # Check if user added a song while we were fetching autoplay
+                    # If yes, prioritize user song and discard/ignore the autoplay result
+                    if await queue.get_queue(chat_id):
+                        logger.info(f"User added song during autoplay fetch in {chat_id} - Switching to user track")
+                        # Clear cancelled flag so new download can proceed
+                        yt.clear_cancelled(chat_id)
+                        media = await queue.get_next(chat_id)
+                    elif new_track:
+                        # Add to queue
+                        await queue.add(chat_id, new_track)
+                        media = new_track # Set media to the new track
+                        
+                        # Notify user about autoplay
+                        _lang = await lang.get_lang(chat_id)
+                        try:
+                            await app.send_message(
+                                chat_id=chat_id,
+                                text=f"<b>Autoplay:</b> Adding <i>{new_track.title}</i> to queue..."
+                            )
+                        except:
+                            pass
+                        # Do NOT recurse. Proceed to play loop below.
+                    else:
+                        # Autoplay failed - notify user
+                        logger.warning(f"Autoplay failed to fetch next track for chat {chat_id}")
+                        try:
+                            await app.send_message(
+                                chat_id=chat_id,
+                                text="⚠️ <b>Autoplay failed</b>\n\nCouldn't fetch the next song. Playback stopped."
+                            )
+                        except:
+                            pass
+                        return await self.stop(chat_id)
                 else:
-                    # Autoplay failed - notify user
-                    logger.warning(f"Autoplay failed to fetch next track for chat {chat_id}")
-                    try:
-                        await app.send_message(
-                            chat_id=chat_id,
-                            text="⚠️ <b>Autoplay failed</b>\n\nCouldn't fetch the next song. Playback stopped."
-                        )
-                    except:
-                        pass
                     return await self.stop(chat_id)
-            else:
+
+            if not media:
                 return await self.stop(chat_id)
 
-        if not media:
-            return await self.stop(chat_id)
-
-        _lang = await lang.get_lang(chat_id)
-        
-        # Show appropriate message based on streaming/downloading
-        from bot import config
-        is_live = getattr(media, "is_live", False)
-        if is_live:
-            msg = await app.send_message(chat_id=chat_id, text="📡 Connecting to live stream...")
-        elif config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me") and not media.video:
-            msg = await app.send_message(chat_id=chat_id, text="⏭️ Loading next track...")
-        else:
-            msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
-        
-        # Download or get stream URL
-        if media.req_type != "telegram":
-            # Direct streaming for YouTube/external URLs (Audio Only)
-            # We force download for video because Telegram streaming is unstable for video
-            if is_live or (config.ENABLE_DIRECT_STREAMING and not media.url.startswith("t.me") and not media.video):
-                # Direct streaming for YouTube/external URLs
-                logger.info(f"🎵 Using direct streaming for: {media.title}")
-                quality = await db.get_quality(chat_id)
-                media.file_path = await yt.get_stream_url(media.id, video=media.video, quality=quality)
-                if not media.file_path and not is_live:
-                    logger.warning(f"Stream URL extraction failed, falling back to download")
-                    media.file_path = await yt.download(media.id, video=media.video)
-            else:
-                # Download for Telegram files or if streaming disabled
-                media.file_path = await yt.download(media.id, video=media.video)
-            if not media.file_path:
-                self._consecutive_failures[chat_id] += 1
-                await self.stop(chat_id)
-                return await msg.edit_text(
-                    _lang["error_no_file"].format(config.SUPPORT_CHAT)
-                )
+            _lang = await lang.get_lang(chat_id)
             
-            # Reset failures on success
-            self._consecutive_failures[chat_id] = 0
-
-
-        media.message_id = msg.id
-        await queue.update_current(chat_id, media)
-        
-        # Prevent Zombie State: Force leave before playing new track
-        # This ensures a fresh connection for every song, resolving "silent playback" issues
-        if config.ENABLE_DIRECT_STREAMING: # Only needed for streaming/long sessions
-            try:
-                client = await db.get_assistant(chat_id)
-                await client.leave_call(chat_id)
-                await asyncio.sleep(2)
-            except:
-                pass
+            # Show appropriate message based on streaming/downloading
+            from bot import config
+            is_live = getattr(media, "is_live", False)
+            if is_live:
+                msg = await app.send_message(chat_id=chat_id, text="📡 Connecting to live stream...")
+            elif config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me") and not media.video:
+                msg = await app.send_message(chat_id=chat_id, text="⏭️ Loading next track...")
+            else:
+                msg = await app.send_message(chat_id=chat_id, text=_lang["play_next"])
+            
+            # Download or get stream URL
+            if media.req_type != "telegram":
+                # Direct streaming for YouTube/external URLs (Audio Only)
+                # We force download for video because Telegram streaming is unstable for video
+                if is_live or (config.ENABLE_DIRECT_STREAMING and not media.url.startswith("t.me") and not media.video):
+                    # Direct streaming for YouTube/external URLs
+                    logger.info(f"🎵 Using direct streaming for: {media.title}")
+                    quality = await db.get_quality(chat_id)
+                    media.file_path = await yt.get_stream_url(media.id, video=media.video, quality=quality)
+                    if not media.file_path and not is_live:
+                        logger.warning(f"Stream URL extraction failed, falling back to download")
+                        media.file_path = await yt.download(media.id, video=media.video)
+                else:
+                    # Download for Telegram files or if streaming disabled
+                    media.file_path = await yt.download(media.id, video=media.video)
+                if not media.file_path:
+                    self._consecutive_failures[chat_id] += 1
+                    await self.stop(chat_id)
+                    return await msg.edit_text(
+                        _lang["error_no_file"].format(config.SUPPORT_CHAT)
+                    )
                 
-        await self.play_media(chat_id, msg, media)
+                # Reset failures on success
+                self._consecutive_failures[chat_id] = 0
+
+            media.message_id = msg.id
+            await queue.update_current(chat_id, media)
+            
+            # Prevent Zombie State: Force leave before playing new track
+            # This ensures a fresh connection for every song, resolving "silent playback" issues
+            if config.ENABLE_DIRECT_STREAMING: # Only needed for streaming/long sessions
+                try:
+                    client = await db.get_assistant(chat_id)
+                    await client.leave_call(chat_id)
+                    await asyncio.sleep(2)
+                except:
+                    pass
+                    
+            await self.play_media(chat_id, msg, media)
 
 
     async def ping(self) -> float:

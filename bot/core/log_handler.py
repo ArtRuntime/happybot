@@ -74,7 +74,10 @@ class TelegramLogHandler(logging.Handler):
             except Exception as e:
                 print(f"Worker Error in TelegramLogHandler: {e}")
             finally:
-                self.queue.task_done()
+                try:
+                    self.queue.task_done()
+                except ValueError:
+                    pass
                 # Adding small sleep to prevent flood limits if bulk errors occur
                 await asyncio.sleep(1)
 

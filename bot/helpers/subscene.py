@@ -104,12 +104,12 @@ def get_sub_options_sync(link):
                 lang = i.find("a").findAll("span")[0].text.strip()
                 title = i.find("a").findAll("span")[1].text.strip()
                 
-                rate_class = i.find("td", class_="a1").find("span", class_="l r")
-                if "neutral-icon" in rate_class.get("class", []):
+                rate_class = i.find("span", class_="l r")
+                if rate_class and "neutral-icon" in rate_class.get("class", []):
                     rate = "😐"
-                elif "positive-icon" in rate_class.get("class", []):
+                elif rate_class and "positive-icon" in rate_class.get("class", []):
                     rate = "🥰"
-                elif "bad-icon" in rate_class.get("class", []):
+                elif rate_class and "bad-icon" in rate_class.get("class", []):
                     rate = "☹️"
                 else:
                     rate = "❓"

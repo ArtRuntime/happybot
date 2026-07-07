@@ -2,7 +2,7 @@ import os
 import asyncio
 from pyrogram import filters
 from pyrogram.types import Message
-from bot import app, config
+from bot import app, config, db
 from bot.helpers.feds_utils import capture_err
 
 __MODULE__ = "Video Downloader"
@@ -127,6 +127,9 @@ async def run_ytdl(url: str, audio_only: bool = False):
 @app.on_message(filters.command("ytdl") & filters.group)
 @capture_err
 async def ytdl_cmd(client, message: Message):
+    if not message.from_user:
+        return
+        
     if len(message.command) < 2:
         return await message.reply_text("Usage: /ytdl <url> [audio]")
     
@@ -138,7 +141,7 @@ async def ytdl_cmd(client, message: Message):
     from pyrogram.enums import ChatMemberStatus
     
     is_admin = member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR]
-    sudoers = await client.db.get_sudoers() if hasattr(client, 'db') else []
+    sudoers = await db.get_sudoers()
     is_sudo = message.from_user.id in sudoers or message.from_user.id == config.OWNER_ID
     
     if not (is_admin or is_sudo):

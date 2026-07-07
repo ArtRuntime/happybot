@@ -122,6 +122,9 @@ async def tg_lock(message, permissions: list, perm: str, lock: bool):
 @app.on_message(filters.command(["lock", "unlock"]) & filters.group)
 @capture_err
 async def locks_func(_, message):
+    if not message.from_user:
+        return
+        
     if len(message.command) != 2:
         return await message.reply_text("Usage: /lock <type> or /unlock <type>")
 
@@ -136,7 +139,7 @@ async def locks_func(_, message):
     # Check if bot is admin
     try:
         me = await app.get_chat_member(chat_id, app.me.id)
-        if not me.privileges.can_restrict_members:
+        if not me.privileges or not me.privileges.can_restrict_members:
              return await message.reply_text("I need 'Restrict Members' permission to manage locks.")
     except:
         return await message.reply_text("I am not an admin here!")
@@ -192,11 +195,13 @@ async def locktypes(_, message):
 
 @app.on_message(filters.text & filters.group, group=69)
 async def url_detector(_, message):
-    user = message.from_user or message.sender_chat
+    if message.sender_chat or not message.from_user:
+        return
+    user = message.from_user
     chat_id = message.chat.id
     text = message.text.lower().strip()
 
-    if not text or not user:
+    if not text:
         return
         
     # Check if user is admin

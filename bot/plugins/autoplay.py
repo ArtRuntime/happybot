@@ -9,7 +9,8 @@ async def update_player_button(chat_id: int, autoplay_status):
     try:
         media = await queue.get_current(chat_id)
         if media and media.message_id:
-            keyboard = buttons.controls(chat_id, autoplay=autoplay_status)
+            audio_track_count = len(getattr(media, 'audio_streams', []))
+            keyboard = buttons.controls(chat_id, autoplay=autoplay_status, audio_tracks=audio_track_count)
             await app.edit_message_reply_markup(
                 chat_id=chat_id,
                 message_id=media.message_id,

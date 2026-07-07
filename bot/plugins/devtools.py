@@ -36,6 +36,8 @@ async def get_text(message):
 @app.on_message(filters.command("rentry") & filters.group)
 @capture_err
 async def rentry_cmd(client, message):
+    if not message.from_user:
+        return
     text = await get_text(message)
     if not text:
         return await message.reply_text("Provide text or reply to a message.")
@@ -51,6 +53,8 @@ async def rentry_cmd(client, message):
 @app.on_message(filters.command("tgraph") & filters.group)
 @capture_err
 async def tgraph_cmd(client, message):
+    if not message.from_user:
+        return
     text = await get_text(message)
     if not text:
         return await message.reply_text("Provide text or reply to a message.")
@@ -67,6 +71,8 @@ async def tgraph_cmd(client, message):
 @app.on_message(filters.command("neko") & filters.group)
 @capture_err
 async def neko_cmd(client, message):
+    if not message.from_user:
+        return
     text = await get_text(message)
     if not text:
         return await message.reply_text("Provide text or reply to a message.")
@@ -85,6 +91,8 @@ async def neko_cmd(client, message):
 @app.on_message(filters.command(["paste", "sbin"]) & filters.group)
 @capture_err
 async def paste_cmd(client, message):
+    if not message.from_user:
+        return
     text = await get_text(message)
     if not text:
         return await message.reply_text("Provide text or reply to a message.")
@@ -106,12 +114,15 @@ async def paste_cmd(client, message):
 @app.on_message(filters.command("imgbb") & filters.group)
 @capture_err
 async def imgbb_cmd(client, message):
+    if not message.from_user:
+        return
     reply = message.reply_to_message
     if not reply or (not reply.photo and not reply.document):
         return await message.reply_text("Reply to an image.")
         
     msg = await message.reply_text("Uploading to ImgBB...")
     
+    path = None
     try:
         path = await reply.download()
         async with httpx.AsyncClient() as http:
@@ -131,13 +142,17 @@ async def imgbb_cmd(client, message):
                     await msg.edit(f"**Uploaded to ImgBB:** [Link]({url})", disable_web_page_preview=True)
                 else:
                     await msg.edit("Failed to upload.")
-        os.remove(path)
     except Exception as e:
         await msg.edit(f"Error: {e}")
+    finally:
+        if path and os.path.exists(path):
+            os.remove(path)
 
 @app.on_message(filters.command("pypi") & filters.group)
 @capture_err
 async def pypi_cmd(client, message):
+    if not message.from_user:
+        return
     if len(message.command) < 2:
         return await message.reply_text("Usage: /pypi <package_name>")
         

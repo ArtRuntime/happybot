@@ -45,7 +45,7 @@ def get_readable_time(seconds: int) -> str:
 @app.on_message(filters.command("afk") & filters.group)
 @capture_err
 async def afk_cmd(client, message):
-    if message.sender_chat:
+    if message.sender_chat or not message.from_user:
          return
          
     user_id = message.from_user.id

@@ -216,6 +216,7 @@ async def dlsub_callback(client, cb):
     
     await cb.message.edit(f"Downloading {title}...")
     
+    filename = None
     try:
         page_info = await down_page(link)
         if not page_info or not page_info["download_url"]:
