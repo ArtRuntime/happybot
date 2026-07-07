@@ -6,7 +6,7 @@
 import os
 import asyncio
 
-from pyrogram import errors, filters, types
+from pyrogram import enums, errors, filters, types
 
 from bot import app, db, lang
 
@@ -30,8 +30,15 @@ async def _broadcast(_, message: types.Message):
 
     if "-nochat" not in message.command:
         groups.extend(await db.get_chats())
-    if "-user" in message.command:
+        if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP] and message.chat.id not in groups:
+            await db.add_chat(message.chat.id)
+            groups.append(message.chat.id)
+            
+    if "-user" in message.command or message.chat.type == enums.ChatType.PRIVATE:
         users.extend(await db.get_users())
+        if message.chat.type == enums.ChatType.PRIVATE and message.chat.id not in users:
+            await db.add_user(message.chat.id)
+            users.append(message.chat.id)
 
     chats.extend(groups + users)
     
@@ -64,6 +71,12 @@ async def _broadcast(_, message: types.Message):
                 break
 
             try:
+                # Force Pyrogram to resolve and cache the peer from Telegram's servers
+                try:
+                    await app.get_chat(chat)
+                except Exception:
+                    pass
+
                 (
                     await msg.copy(chat, reply_markup=msg.reply_markup)
                     if "-copy" in message.text
@@ -76,8 +89,13 @@ async def _broadcast(_, message: types.Message):
                 await asyncio.sleep(0.1)
             except errors.FloodWait as fw:
                 await asyncio.sleep(fw.value + 30)
-                # Retry once after floodwait? 
-                # For now just continue to avoid complexity in simple loop
+            except (errors.PeerIdInvalid, errors.UserDeactivated, errors.ChatWriteForbidden, errors.ChannelPrivate, errors.UserIsBlocked) as e:
+                # Clean up permanently invalid/unreachable chats and users from MongoDB
+                if chat in groups:
+                    await db.rm_chat(chat)
+                else:
+                    await db.rm_user(chat)
+                failed += f"{chat} - Removed from DB: {e}\n"
             except Exception as ex:
                 failed += f"{chat} - {ex}\n"
                 continue

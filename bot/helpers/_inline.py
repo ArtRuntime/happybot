@@ -66,12 +66,18 @@ class Inline:
                         self.ikb(text=lang["support"], url=config.SUPPORT_CHAT),
                         self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL),
                     ],
+                    [
+                        self.ikb(text="🪵 Show Logs", url=config.LOGS_GROUP_LINK)
+                    ],
                 ]
             )
         else:
             return self.ikm(
                 [
-                    [self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL)],
+                    [
+                        self.ikb(text=lang["channel"], url=config.SUPPORT_CHANNEL),
+                        self.ikb(text="🪵 Show Logs", url=config.LOGS_GROUP_LINK),
+                    ],
                 ]
             )
 

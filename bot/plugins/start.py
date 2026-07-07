@@ -113,3 +113,15 @@ async def _new_member(_, message: types.Message):
                 return
             await utils.send_log(message, True)
             await db.add_chat(message.chat.id)
+
+
+@app.on_message(group=-1)
+async def auto_register_chats(_, message: types.Message):
+    if not message.chat:
+        return
+    if message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+        if not await db.is_chat(message.chat.id):
+            await db.add_chat(message.chat.id)
+    elif message.chat.type == enums.ChatType.PRIVATE:
+        if message.from_user and not await db.is_user(message.from_user.id):
+            await db.add_user(message.from_user.id)

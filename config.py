@@ -23,6 +23,7 @@ class Config:
 
         self.SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/alex5402")
         self.SUPPORT_CHAT = getenv("SUPPORT_CHAT", "https://t.me/alex5402")
+        self.LOGS_GROUP_LINK = getenv("LOGS_GROUP_LINK", "https://t.me/+uRvxLyMjYIVmNDc1")
 
         self.AUTO_END: bool = getenv("AUTO_END", "false").lower() in ("true", "1", "yes")
         self.VIDEO_PLAY: bool = getenv("VIDEO_PLAY", "true").lower() in ("true", "1", "yes")
