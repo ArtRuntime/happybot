@@ -393,7 +393,6 @@ class TgCall(PyTgCalls):
         except Exception as e:
             err_str = str(e)
             from pyrogram.errors import AuthKeyUnregistered
-            from bot import userbot
             if isinstance(e, AuthKeyUnregistered) or "401 AUTH_KEY_UNREGISTERED" in err_str:
                 logger.error(f"Connection check detected unregistered userbot client: {e}")
                 if 'session_name' in locals() and session_name:
@@ -876,17 +875,21 @@ class TgCall(PyTgCalls):
             
             try:
                 # Re-fetch media (Stream OR Download)
-                # We reuse the logic from play_next/prepare roughly
+                # We reuse the logic from play_next/prepare
                 
                 # Try direct stream if applicable
                 if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me") and not media.video:
                      quality = await db.get_quality(chat_id)
                      media.file_path = await yt.get_stream_url(media.id, video=media.video, quality=quality)
                      if not media.file_path:
-                         media.file_path = await yt.download(media.id, video=media.video)
+                         # If this is Attempt 3, fall back to downloading video format for audio track
+                         use_video_fallback = (self._consecutive_failures[chat_id] >= 2)
+                         media.file_path = await yt.download(media.id, video=use_video_fallback)
                 else:
                      # Fallback to download
-                     media.file_path = await yt.download(media.id, video=media.video)
+                     # If this is Attempt 3, fall back to downloading video format for audio track
+                     use_video_fallback = (self._consecutive_failures[chat_id] >= 2 and not media.video)
+                     media.file_path = await yt.download(media.id, video=(media.video or use_video_fallback))
                 
                 if media.file_path:
                      # Recursive retry
@@ -904,7 +907,6 @@ class TgCall(PyTgCalls):
             await message.edit_text(_lang["error_rtmp"])
         except Exception as e:
             from pyrogram.errors import AuthKeyUnregistered
-            from bot import userbot
             if isinstance(e, AuthKeyUnregistered) or "401 AUTH_KEY_UNREGISTERED" in str(e):
                 logger.error(f"Play Media detected unregistered userbot client: {e}")
                 session_name = db.assistant.get(chat_id)
@@ -1116,6 +1118,9 @@ class TgCall(PyTgCalls):
                     return await self.stop(chat_id)
             else:
                 return await self.stop(chat_id)
+
+        if not media:
+            return await self.stop(chat_id)
 
         _lang = await lang.get_lang(chat_id)
         

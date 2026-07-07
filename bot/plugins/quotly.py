@@ -100,7 +100,7 @@ async def create_quotly(messages, is_reply=False):
         payload["messages"].append(await message_to_dict(msg, is_reply))
         
     async with httpx.AsyncClient() as http:
-        resp = await http.post("https://bot.lyo.su/quote/generate.png", json=payload, timeout=20.0)
+        resp = await http.post("https://quote.yuri.ly/generate.png", json=payload, timeout=20.0)
         if resp.status_code != 200:
             return None
         return resp.content
