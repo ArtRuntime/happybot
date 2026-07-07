@@ -882,22 +882,16 @@ class TgCall(PyTgCalls):
                 logger.debug(f"Could not edit message for re-fetch: {e}")
             
             try:
-                # Re-fetch media (Stream OR Download)
-                # We reuse the logic from play_next/prepare
+                # Re-fetch media (always download on retry for maximum stability)
+                # Attempt 2 (consecutive_failures == 1): Download audio format
+                # Attempt 3 (consecutive_failures == 2): Download video format to extract audio
+                use_video_fallback = (self._consecutive_failures[chat_id] >= 2 and not media.video)
                 
-                # If we've failed at least once (i.e. consecutive_failures >= 1) and we are not playing video,
-                # use video as fallback (download or stream the video format to extract audio)
-                use_video_fallback = (self._consecutive_failures[chat_id] >= 1 and not media.video)
-                
-                # Try direct stream if applicable
-                if config.ENABLE_DIRECT_STREAMING and media.req_type != "telegram" and not media.url.startswith("t.me"):
-                     quality = await db.get_quality(chat_id)
-                     media.file_path = await yt.get_stream_url(media.id, video=(media.video or use_video_fallback), quality=quality)
-                     if not media.file_path:
-                          # Fallback to download
-                          media.file_path = await yt.download(media.id, video=(media.video or use_video_fallback))
+                if media.req_type == "telegram" or media.url.startswith("t.me"):
+                     # Telegram local file retry
+                     media.file_path = await yt.download(media.id, video=media.video)
                 else:
-                     # Fallback to download
+                     # YouTube/external sources retry - always download for stability
                      media.file_path = await yt.download(media.id, video=(media.video or use_video_fallback))
                 
                 if media.file_path:
