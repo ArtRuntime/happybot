@@ -257,9 +257,32 @@ class TgCall(PyTgCalls):
                                         # Clear cache so next check is real
                                         if chat_id in self._connection_cache:
                                             del self._connection_cache[chat_id]
-
+                                        
                                         media = await queue.get_current(chat_id)
                                         if media:
+                                            # Verify and resolve media.file_path if missing/None
+                                            if not media.file_path or (not media.file_path.startswith("http") and not os.path.exists(media.file_path)):
+                                                logger.info(f"File path for current media {media.title} is missing or None, attempting to resolve/redownload...")
+                                                from bot import config
+                                                is_live = getattr(media, "is_live", False)
+                                                if media.req_type != "telegram":
+                                                    if is_live or (config.ENABLE_DIRECT_STREAMING and not media.url.startswith("t.me") and not media.video):
+                                                        quality = await db.get_quality(chat_id)
+                                                        media.file_path = await yt.get_stream_url(media.id, video=media.video, quality=quality)
+                                                        if not media.file_path and not is_live:
+                                                            media.file_path = await yt.download(media.id, video=media.video)
+                                                    else:
+                                                        media.file_path = await yt.download(media.id, video=media.video)
+                                                else:
+                                                    media.file_path = await yt.download(media.id, video=media.video)
+                                                
+                                                if media.file_path:
+                                                    await queue.update_current(chat_id, media)
+                                                else:
+                                                    logger.error(f"Failed to resolve file path for {media.title}, skipping broken track...")
+                                                    await self.play_next(chat_id)
+                                                    continue
+
                                             # Leave first to clean up state
                                             try:
                                                 await client.leave_group_call(chat_id)
